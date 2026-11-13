@@ -1,0 +1,105 @@
+/* ==========================================================================
+   Global & Layout Styles (Atom Group Phi Phi)
+   ========================================================================== */
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f4f6f9;
+  margin: 0;
+}
+
+/* จัดกึ่งกลางหน้าจอสำหรับหน้า Login */
+body.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+}
+
+/* การ์ดหน้า Login และหน้าแจ้งเตือนไม่มีสิทธิ์ */
+.login-card {
+  background: #ffffff;
+  padding: 40px 30px;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  text-align: center;
+  max-width: 440px;
+  width: 92%;
+}
+
+/* ปุ่ม LINE Login */
+.line-btn {
+  background-color: #06C755;
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 13px 0;
+  border-radius: 8px;
+  display: block;
+  width: 100%;
+  border: none;
+  box-shadow: 0 4px 12px rgba(6, 199, 85, 0.3);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.line-btn:hover {
+  background-color: #05b34c;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(6, 199, 85, 0.4);
+}
+
+.line-btn:disabled {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* กล่องทดสอบ Dev Mode */
+.dev-box {
+  background-color: #fff8e6;
+  border: 1px dashed #ffc107;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 24px;
+  text-align: left;
+}
+
+.dev-note {
+  font-size: 11px;
+}
+
+/* รูปโปรไฟล์หน้าแจ้งเตือนไม่มีสิทธิ์ */
+.no-access-avatar {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 3px solid #dc3545;
+  object-fit: cover;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* ==========================================================================
+   Dashboard & Menu Cards (index.html)
+   ========================================================================== */
+.header-banner {
+  padding: 20px 15px 10px;
+}
+
+.menu-card {
+  border: none;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.menu-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+.menu-card .icon-box {
+  font-size: 2.4rem;
+  color: #0d6efd;
+  margin-bottom: 12px;
+}
