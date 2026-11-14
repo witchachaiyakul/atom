@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกพนักงานใหม่ / ลาออก - HR Atom Group</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom HR CSS -->
+  <link rel="stylesheet" href="../css/hr.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loader" class="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+      <div class="mt-2 fw-bold text-dark">กำลังประมวลผล...</div>
+    </div>
+  </div>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand mb-0 h1 fs-6 text-decoration-none" href="index.html">
+        <i class="bi bi-people-fill me-2 text-warning"></i>ระบบงานบุคคล (HR) - Atom Group Phi Phi
+      </a>
+
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile"
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #fde047;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- พื้นที่หลัก: บันทึกพนักงานใหม่ / ลาออก -->
+  <div class="container pb-5" style="max-width: 920px;">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+        <i class="bi bi-calendar-check me-2"></i>บันทึกพนักงานใหม่ / ลาออก
+      </h3>
+      <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white pt-3 px-4 border-bottom-0">
+        <ul class="nav nav-tabs card-header-tabs" id="hrTab" role="tablist">
+          <li class="nav-item">
+            <button class="nav-link active fw-bold" data-bs-toggle="tab" data-bs-target="#newEmp" type="button">
+              <i class="bi bi-person-plus-fill me-1 text-success"></i>บันทึกพนักงานใหม่
+            </button>
+          </li>
+          <li class="nav-item">
+            <button class="nav-link fw-bold" data-bs-toggle="tab" data-bs-target="#resignEmp" type="button">
+              <i class="bi bi-person-dash-fill me-1 text-danger"></i>บันทึกการลาออก
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <div class="card-body p-4">
+        <div class="tab-content">
+          <!-- แท็บที่ 1: บันทึกพนักงานใหม่ -->
+          <div class="tab-pane fade show active" id="newEmp">
+            <form id="newEmpForm">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">ชื่อ-นามสกุล <span class="text-danger">*</span></label>
+                  <input type="text" name="name" class="form-control" required onblur="checkDuplicateName(this.value)">
+                  <small id="nameStatus" class="text-danger fw-bold"></small>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label mb-1 fw-bold small">ชื่อเล่น</label>
+                  <input type="text" name="nickname" class="form-control">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label mb-1 fw-bold small">รหัสเครื่องสแกน (PID)</label>
+                  <input type="text" name="pid" class="form-control" placeholder="เช่น 753451">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">ทำงานที่ (สาขา/ร้าน)</label>
+                  <select name="workplace" id="workplaceList" class="form-select"></select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label mb-1 fw-bold small">เพศ (Gender)</label>
+                  <select name="gender" class="form-select">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                  </select>
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label mb-1 fw-bold small">สัญชาติ</label>
+                  <select name="nationality" class="form-select">
+                    <option value="Thai">Thai</option>
+                    <option value="Myanmar">Myanmar</option>
+                    <option value="Cambodian">Cambodian</option>
+                    <option value="Laotian">Laotian</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">Passport ID / เลขบัตรประชาชน</label>
+                  <input type="text" name="passportId" class="form-control">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">Work Permit</label>
+                  <select name="hasWorkPermit" class="form-select">
+                    <option value="มี">มี</option>
+                    <option value="ไม่มี">ไม่มี</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">แผนก (Section)</label>
+                  <select name="section" id="sectionList" class="form-select" onchange="updatePositionDropdown(this.value)"></select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">ตำแหน่ง (Position)</label>
+                  <select name="position" id="positionList" class="form-select">
+                    <option value="">-- กรุณาเลือกแผนกก่อน --</option>
+                  </select>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">เงินเดือน</label>
+                  <input type="number" name="salary" class="form-control" placeholder="0">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small">วันที่เริ่มงาน</label>
+                  <input type="date" name="startDate" class="form-control">
+                </div>
+
+                <div class="col-md-6">
+                  <div class="form-check mt-4">
+                    <input class="form-check-input" type="checkbox" name="socialSec" id="ssCheck">
+                    <label class="form-check-label fw-bold small" for="ssCheck">ใช้สิทธิ์ประกันสังคม</label>
+                  </div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="form-label mb-1 fw-bold small d-block">ที่พัก</label>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="housing" id="housingOutside" value="Outside" checked onclick="toggleHousing(false)">
+                    <label class="form-check-label small" for="housingOutside">Outside (พักข้างนอก)</label>
+                  </div>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="housing" id="housingCompany" value="Company" onclick="toggleHousing(true)">
+                    <label class="form-check-label small" for="housingCompany">บ้านพักบริษัท</label>
+                  </div>
+                  <input type="text" id="housingDetail" name="housingDetail" class="form-control form-control-sm mt-1" placeholder="ระบุเลขที่บ้านพัก" disabled>
+                </div>
+
+                <div class="col-12 mt-3">
+                  <hr class="my-1">
+                  <p class="fw-bold small text-muted mb-0">เอกสารแนบ (อัปโหลดรูปภาพ)</p>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">1. รูปพนักงาน</label>
+                  <input type="file" name="fileEmp" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">2. รูป Passport</label>
+                  <input type="file" name="filePassport" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">3. รูป Visa</label>
+                  <input type="file" name="fileVisa" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">4. รูป Work Permit</label>
+                  <input type="file" name="fileWP" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">5. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther5" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">6. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther6" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">7. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther7" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">8. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther8" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">9. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther9" class="form-control form-control-sm" accept="image/*">
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label mb-1 small">10. เอกสารอื่นๆ</label>
+                  <input type="file" name="fileOther10" class="form-control form-control-sm" accept="image/*">
+                </div>
+              </div>
+
+              <button type="button" id="btnSubmitNewEmp" class="btn btn-hr mt-4 w-100 fw-bold py-2" onclick="submitNewEmployee()">
+                <i class="bi bi-save me-1"></i>บันทึกพนักงานใหม่
+              </button>
+            </form>
+          </div>
+
+<!-- แท็บที่ 2: บันทึกการลาออก -->
+          <div class="tab-pane fade" id="resignEmp">
+            <form id="resignForm" style="max-width: 540px; margin: 0 auto;">
+              <div class="mb-3">
+                <label class="form-label mb-1 fw-bold small">เลือกชื่อพนักงาน <span class="text-danger">*</span></label>
+                <select name="resignName" id="resignEmpList" class="form-select"></select>
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label mb-1 fw-bold small">วันที่ลาออก <span class="text-danger">*</span></label>
+                <input type="date" name="resignDate" class="form-control">
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label mb-1 fw-bold small">เหตุผลการลาออก <span class="text-danger">*</span></label>
+                <textarea name="resignReason" id="resignReason" class="form-control" rows="3" placeholder="ระบุเหตุผลการลาออก เช่น กลับภูมิลำเนา, ได้งานใหม่, ศึกษาต่อ..."></textarea>
+              </div>
+
+              <div class="mb-4">
+                <label class="form-label mb-1 fw-bold small">เอกสารแนบใบลาออก (รูปภาพ / PDF)</label>
+                <input type="file" name="fileResign" id="fileResign" class="form-control" accept="image/*,.pdf">
+                <small class="text-muted">รองรับไฟล์รูปภาพ (.jpg, .png) หรือเอกสาร .pdf</small>
+              </div>
+
+              <button type="button" id="btnSubmitResign" class="btn btn-danger w-100 fw-bold py-2" onclick="submitResignation()">
+                <i class="bi bi-person-x-fill me-1"></i>บันทึกการลาออก
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Module -->
+  <script type="module" src="js/on-offboard.js"></script>
+</body>
+</html>

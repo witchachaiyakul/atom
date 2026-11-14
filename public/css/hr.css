@@ -1,0 +1,434 @@
+/* ==========================================================================
+   Atom Group Phi Phi - HR Theme (Warm Sunset Orange & Amber)
+   ========================================================================== */
+:root {
+  --hr-primary: #c2410c;         /* Deep Terracotta Orange */
+  --hr-primary-light: #f97316;   /* Vibrant Sunset Orange */
+  --hr-primary-dark: #7c2d12;    /* Rich Espresso Rust */
+  --primary-yellow: #FFC107;     /* สีเหลืองอำพัน (รองรับโค้ดเดิม) */
+  --secondary-orange: #E65100;   /* สีส้มเข้มหลัก (รองรับโค้ดเดิม) */
+  --light-warm: #FFF8EE;         /* พื้นหลังโทนครีมอุ่นสบายตา */
+  --hr-accent: #f59e0b;          /* Warm Amber Gold */
+  --hr-surface: #ffffff;         /* Pure White Card */
+  --hr-text: #1e293b;            /* Dark Slate Text */
+  --hr-border: #fed7aa;          /* Soft Peach Border */
+}
+
+body {
+  font-family: 'Sarabun', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--light-warm);
+  color: var(--hr-text);
+  margin: 0;
+  padding: 0;
+}
+
+/* ==========================================================================
+   Navbar & Header
+   ========================================================================== */
+.navbar.bg-dark {
+  background: linear-gradient(135deg, var(--hr-primary-dark) 0%, var(--secondary-orange) 100%) !important;
+  border-bottom: 3px solid var(--primary-yellow);
+}
+
+.navbar-brand {
+  letter-spacing: 0.3px;
+}
+
+.header-banner {
+  padding: 24px 15px 12px;
+}
+
+.header-bg {
+  background: linear-gradient(135deg, var(--primary-yellow), var(--secondary-orange));
+  color: white;
+  padding: 40px 0;
+  text-align: center;
+  border-bottom-left-radius: 20px;
+  border-bottom-right-radius: 20px;
+  margin-bottom: 30px;
+}
+
+/* ==========================================================================
+   Dashboard & Menu Cards (hr/index.html)
+   ========================================================================== */
+.menu-card,
+.main-card {
+  background: var(--hr-surface);
+  border: 1px solid #ffedd5;
+  border-radius: 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 4px 14px rgba(230, 81, 0, 0.06);
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+  height: 100%;
+}
+
+.menu-card::before,
+.main-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--secondary-orange), var(--primary-yellow));
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.menu-card:hover,
+.main-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--hr-border);
+  box-shadow: 0 12px 26px rgba(230, 81, 0, 0.18) !important;
+}
+
+.menu-card:hover::before,
+.main-card:hover::before {
+  opacity: 1;
+}
+
+.menu-card .icon-box,
+.main-card .icon-box {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%);
+  color: var(--secondary-orange);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  transition: all 0.22s ease;
+}
+
+.menu-card:hover .icon-box,
+.main-card:hover .icon-box {
+  background: linear-gradient(135deg, var(--secondary-orange) 0%, var(--hr-primary-light) 100%);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+/* ==========================================================================
+   Cards, Tables, Forms & Buttons (ทุกหน้าในระบบ HR)
+   ========================================================================== */
+.card {
+  border-radius: 14px;
+  border-color: #ffedd5;
+}
+
+.card-header.bg-dark {
+  background: linear-gradient(135deg, var(--hr-primary-dark) 0%, var(--secondary-orange) 100%) !important;
+  border-bottom: none;
+}
+
+.emp-item-card {
+  background: white;
+  border-radius: 10px;
+  border-left: 5px solid var(--secondary-orange);
+  padding: 15px;
+  margin-bottom: 15px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.table {
+  --bs-table-hover-bg: #fff7ed;
+}
+
+.table thead.table-light th {
+  background-color: #fff7ed;
+  color: var(--hr-primary-dark);
+  border-bottom: 2px solid var(--hr-border);
+  font-weight: 700;
+}
+
+.table thead.table-dark th {
+  background-color: var(--hr-primary-dark);
+  border-color: var(--secondary-orange);
+}
+
+.form-control,
+.form-select {
+  border-radius: 9px;
+  border-color: #cbd5e1;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--hr-primary-light);
+  box-shadow: 0 0 0 0.2rem rgba(249, 115, 22, 0.2);
+}
+
+.btn {
+  border-radius: 9px;
+  transition: all 0.18s ease;
+}
+
+.btn-hr {
+  background-color: var(--secondary-orange);
+  border-color: var(--secondary-orange);
+  color: #ffffff;
+}
+
+.btn-hr:hover {
+  background-color: var(--hr-primary-dark);
+  border-color: var(--hr-primary-dark);
+  color: #ffffff;
+}
+
+/* ==========================================================================
+   Loading, Modals & Utilities
+   ========================================================================== */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.85);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+.modal-xl {
+  max-width: 95%;
+}
+
+.x-small {
+  font-size: 0.75rem;
+}
+
+.img-hover:hover {
+  transform: scale(1.05);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2) !important;
+  transition: 0.3s;
+  z-index: 10;
+}
+
+/* ==========================================================================
+   📌 โครงสร้างปุ่มบวกลอยและเส้นไกด์ไลน์ (ตารางลงเวลาเข้างาน)
+   ========================================================================== */
+#attendanceTableContainer {
+  position: relative;
+}
+
+#floatingInsertBtn {
+  position: absolute;
+  left: 2px;
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  z-index: 20;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  transition: transform 0.1s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#floatingInsertBtn:hover {
+  transform: translateY(-50%) scale(1.2);
+}
+
+#floatingInsertLine {
+  position: absolute;
+  left: 26px;
+  right: 0;
+  height: 2px;
+  background-color: #0d6efd;
+  z-index: 19;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* ==========================================================================
+   📅 สไตล์กำหนดหน้าตา Grid ปฏิทินรายเดือน (Payroll & Attendance)
+   ========================================================================== */
+.payroll-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.cal-day-header {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 700;
+  background: #f1f3f5;
+  border-radius: 3px;
+  padding: 4px;
+}
+
+.cal-day-box {
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  background: #fff;
+  padding: 3px;
+  min-height: 48px;
+  cursor: pointer;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cal-day-box:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  border-color: #0d6efd;
+}
+
+.cal-empty-box {
+  background: #e9ecef;
+  border: 1px dashed #ccc;
+  cursor: default;
+  pointer-events: none;
+}
+
+.cal-date-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #495057;
+  align-self: flex-start;
+  line-height: 1;
+}
+
+.cal-status-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cal-ot-text {
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: #b27b00;
+  line-height: 1;
+}
+
+/* 🏷️ ชุดสีป้ายสถานะสากล */
+.badge-full { background-color: #d1e7dd; color: #0f5132; }
+.badge-half { background-color: #e2d9f3; color: #432874; }
+.badge-sick { background-color: #f8d7da; color: #842029; }
+.badge-off { background-color: #e9ecef; color: #495057; }
+.badge-absent { background-color: #dc3545; color: #fff; font-weight: 800; }
+.badge-late { background-color: #fff3cd; color: #664d03; }
+.badge-leave { background-color: #cfe2ff; color: #084298; }
+.badge-extra-day { background-color: #cff4fc; color: #055160; }
+.badge-full-ph { background-color: #198754; color: #fff; }
+.badge-half-ph { background-color: #6f42c1; color: #fff; }
+.badge-without-pay { background-color: #721c24; color: #fff; }
+
+.summary-number-trigger:hover {
+  background-color: #fff3cd !important;
+  text-decoration: underline;
+}
+
+/* 🛑 ซ่อนพื้นที่จัดทำใบเตือนในหน้าจอเว็บบนเบราว์เซอร์ปกติ */
+#printWarningArea {
+  display: none;
+}
+
+/* ==========================================================================
+   🖨️ โหมดการจัดการพิมพ์เอกสาร (Print Mode - รองรับทั้ง Detail Modal และใบเตือน A4)
+   ========================================================================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  #detailModal,
+  #detailModal * {
+    visibility: visible;
+  }
+
+  #detailModal {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .modal-header .btn-close,
+  .btn-print-action,
+  .no-print,
+  nav.navbar {
+    display: none !important;
+  }
+
+  .modal-content {
+    border: none !important;
+  }
+
+  /* โครงสร้างใบเตือน (A4) */
+  #printWarningArea,
+  #printWarningArea * {
+    visibility: visible;
+  }
+
+  #printWarningArea {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 15mm 18mm;
+    background: #fff !important;
+    color: #000 !important;
+    font-family: 'Sarabun', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .warning-doc-box {
+    border: 1.5px solid #000;
+    padding: 20px 24px;
+  }
+
+  .warning-table-print,
+  .print-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 12px 0 !important;
+  }
+
+  .warning-table-print th,
+  .warning-table-print td,
+  .print-table th,
+  .print-table td {
+    border: 1px solid #000 !important;
+    padding: 5px 8px !important;
+    font-size: 12px !important;
+    color: #000 !important;
+  }
+
+  .warning-table-print th {
+    background-color: #f2f2f2 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .print-table td.text-left {
+    text-align: left !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+}

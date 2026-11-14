@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกรายรับรายวัน - Atom Group Phi Phi</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="../css/back-office.css">
+
+  <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" onclick="location.href='index.html'" class="btn btn-outline-warning btn-sm">
+          <i class="bi bi-arrow-left"></i> หน้าหลัก
+        </button>
+        <span class="navbar-brand mb-0 h1 fs-6 ms-2">
+          <i class="bi bi-cash-stack me-1 text-warning"></i>ระบบหลังบ้าน Atom Group Phi Phi
+        </span>
+      </div>
+      
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" 
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #deff9a;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+
+  <!-- Datalist รายชื่อร้านค้า -->
+  <datalist id="shopList"></datalist>
+
+  <!-- พื้นที่หลักหน้าบันทึกรายรับรายวัน -->
+  <div id="incomeForm" class="container py-2 pb-5 form-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="text-primary mb-0"><i class="bi bi-journal-check me-2"></i>บันทึกรายรับรายวัน</h3>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <!-- แถบกรองข้อมูล -->
+    <div class="row g-3 mb-4 bg-light p-3 rounded shadow-sm border">
+      <div class="col-md-5">
+        <label class="form-label fw-bold">กรองตามวันที่</label>
+        <input type="date" id="incomeFilterDate" class="form-control" oninput="filterIncomeTable()">
+      </div>
+      <div class="col-md-5">
+        <label class="form-label fw-bold">กรองตามชื่อร้าน</label>
+        <input list="shopList" id="incomeFilterShop" class="form-control" placeholder="พิมพ์ชื่อร้าน..." oninput="filterIncomeTable()" onchange="filterIncomeTable()">
+      </div>
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="button" class="btn btn-outline-secondary w-100" onclick="loadAllIncomes()">
+          <i class="bi bi-arrow-clockwise"></i> รีเฟรช
+        </button>
+      </div>
+    </div>
+
+    <!-- รายการรายรับรายวัน -->
+    <div id="incomeListContainer" class="list-group mb-4 shadow-sm" style="max-height: 350px; overflow-y: auto; border: 1px solid #dee2e6;">
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary"></div>
+        <p class="mt-2 mb-0 text-muted">กำลังโหลดข้อมูล...</p>
+      </div>
+    </div>
+
+    <!-- ส่วนแก้ไข / บันทึกรายรับประจำวัน -->
+    <div id="incomeEditSection" class="d-none animate__animated animate__fadeIn">
+      <div class="alert alert-info d-flex justify-content-between align-items-center">
+        <span id="editTitle" class="fw-bold"></span>
+        <button type="button" class="btn-close" onclick="closeIncomeEdit()"></button>
+      </div>
+      
+      <div class="table-responsive mb-3">
+        <table class="table table-bordered table-sm bg-white small text-center">
+          <thead class="table-light">
+            <tr>
+              <th style="width: 20%;">รายการ</th>
+              <th>Cash</th>
+              <th>Visa</th>
+              <th>Master</th>
+              <th>Transfer</th>
+              <th>Other</th>
+              <th class="table-dark">Total Ocha</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="table-info">
+              <td class="fw-bold text-start">ยอดจาก Ocha</td>
+              <td id="viewCash">0</td>
+              <td id="viewVisa">0</td>
+              <td id="viewMaster">0</td>
+              <td id="viewTransfer">0</td>
+              <td id="viewOther">0</td>
+              <td id="viewTotalL" class="fw-bold">0</td>
+            </tr>
+            <tr class="table-warning">
+              <td class="fw-bold text-start">ยอดแก้ไข</td>
+              <td id="adjViewCash" class="fw-bold">0</td>
+              <td id="adjViewVisa" class="fw-bold">0</td>
+              <td id="adjViewMaster" class="fw-bold">0</td>
+              <td id="adjViewTransfer" class="fw-bold">0</td>
+              <td id="adjViewOther" class="fw-bold">0</td>
+              <td id="adjViewTotal" class="fw-bold text-primary">0</td>
+            </tr>
+          </tbody>
+
+          <thead class="table-light">
+            <tr>
+              <th style="width: 20%;">รายการ</th>
+              <th>Cash Out</th>
+              <th>Tip</th>
+              <th>Tip Type</th>
+              <th>อื่นๆ</th>
+              <th colspan="2">สถานะ</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="fw-bold text-start">รายการจาก Income</td> 
+              <td id="viewCashOut">0</td>      
+              <td id="viewTip">0</td>          
+              <td>
+                <span id="viewTipType">-</span>
+                <div class="d-none">
+                  <input type="text" id="inputTipType"> 
+                  <input type="number" id="inputCashSum" value="0">
+                </div>
+              </td>
+              <td id="viewOtherIncome">0</td>
+              <td colspan="2" id="viewRecordStatus" class="fw-bold text-muted">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card p-4 shadow-sm border-primary mb-5">
+        <div class="row g-3 mb-3">
+          <div class="col-md-6">
+            <label class="small fw-bold text-danger">ยอด Cash Out</label>
+            <input type="number" id="inputCashout" class="form-control border-danger" step="0.01" oninput="calculateDiff()">
+          </div>
+          <div class="col-md-6">
+            <label class="small fw-bold text-secondary">อื่นๆ</label>
+            <input type="number" id="inputOther" class="form-control border-primary" step="0.01" oninput="calculateDiff()">
+          </div>
+        </div>
+
+        <div class="row g-3 align-items-end">
+          <div class="col-md-4">
+            <label class="small fw-bold text-primary">Tip (ทิปพนักงาน)</label>
+            <input type="number" id="inputTip" class="form-control border-primary" step="0.01" oninput="toggleTipType()">
+          </div>
+          
+          <div id="tipTypeContainer" class="col-md-8 d-none animate__animated animate__fadeIn">
+            <div class="p-2 border rounded bg-light">
+              <label class="small fw-bold d-block mb-2 text-muted">ประเภทการรับทิป:</label>
+              <div class="d-flex gap-4">
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="tipPaymentMethod" id="tipVisa" value="VISA" checked onclick="calculateDiff()">
+                  <label class="form-check-label small" for="tipVisa">ทิปจาก VISA</label>
+                </div>
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="tipPaymentMethod" id="tipMaster" value="MasterCard" onclick="calculateDiff()">
+                  <label class="form-check-label small" for="tipMaster">ทิปจาก MasterCard</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- อัปโหลดบิล Cash Out หลายไฟล์ -->
+        <div class="row g-3 mt-3">
+          <div class="col-12">
+            <div class="p-4 border rounded bg-white shadow-sm border-start border-4 border-primary">
+              <label class="form-label fw-bold text-primary">
+                <i class="bi bi-folder-plus me-1"></i> อัปโหลดบิล Cash Out (หลายไฟล์)
+              </label>
+              
+              <div class="input-group">
+                <input type="file" id="cashoutFiles" class="form-control" accept="image/*,application/pdf" multiple>
+                <button class="btn btn-primary" type="button" id="btnUploadBulk" onclick="startBulkUpload()">
+                  <i class="bi bi-cloud-arrow-up me-1"></i> เริ่มอัปโหลด
+                </button>
+              </div>
+              
+              <div id="bulkUploadStatus" class="mt-3 d-none">
+                <div class="progress mb-2" style="height: 10px;">
+                  <div id="uploadProgress" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                </div>
+                <small id="statusText" class="text-muted">กำลังเตรียมการ...</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <h6 class="fw-bold mb-3 text-dark"><i class="bi bi-sliders me-1"></i> ปรับปรุงยอดเงิน</h6>
+        <div class="row g-3">
+          <div class="col-md-6 col-lg-3">
+            <label class="small fw-bold text-muted">VISA</label>
+            <div class="input-group">
+              <select class="form-select bg-light" id="adjSignVisa" style="max-width: 65px;" onchange="calculateDiff()">
+                <option value="plus">+</option>
+                <option value="minus">-</option>
+              </select>
+              <input type="number" id="adjValVisa" class="form-control" placeholder="0.00" step="0.01" oninput="calculateDiff()">
+            </div>
+          </div>
+
+          <div class="col-md-6 col-lg-3">
+            <label class="small fw-bold text-muted">Master</label>
+            <div class="input-group">
+              <select class="form-select bg-light" id="adjSignMaster" style="max-width: 65px;" onchange="calculateDiff()">
+                <option value="plus">+</option>
+                <option value="minus">-</option>
+              </select>
+              <input type="number" id="adjValMaster" class="form-control" placeholder="0.00" step="0.01" oninput="calculateDiff()">
+            </div>
+          </div>
+
+          <div class="col-md-6 col-lg-3">
+            <label class="small fw-bold text-muted">Transfer</label>
+            <div class="input-group">
+              <select class="form-select bg-light" id="adjSignTransfer" style="max-width: 65px;" onchange="calculateDiff()">
+                <option value="plus">+</option>
+                <option value="minus">-</option>
+              </select>
+              <input type="number" id="adjValTransfer" class="form-control" placeholder="0.00" step="0.01" oninput="calculateDiff()">
+            </div>
+          </div>
+
+          <div class="col-md-6 col-lg-3">
+            <label class="small fw-bold text-muted">Cash</label>
+            <div class="input-group">
+              <select class="form-select bg-light" id="adjSignCash" style="max-width: 65px;" onchange="calculateDiff()">
+                <option value="plus">+</option>
+                <option value="minus">-</option>
+              </select>
+              <input type="number" id="adjValCash" class="form-control" placeholder="0.00" step="0.01" oninput="calculateDiff()">
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-2 mt-4 mb-4">
+          <div class="col-md-3">
+            <div class="p-3 border rounded bg-white text-center shadow-sm">
+              <small class="fw-bold text-muted">สรุปยอด VISA</small>
+              <div id="finalVisa" class="fs-4 fw-bold text-primary">0.00</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="p-3 border rounded bg-white text-center shadow-sm">
+              <small class="fw-bold text-muted">สรุปยอด Master</small>
+              <div id="finalMaster" class="fs-4 fw-bold text-primary">0.00</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="p-3 border rounded bg-white text-center shadow-sm">
+              <small class="fw-bold text-muted">สรุปยอด Transfer</small>
+              <div id="finalTransfer" class="fs-4 fw-bold text-primary">0.00</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="p-3 border rounded bg-warning text-center shadow">
+              <small class="fw-bold text-dark">สรุปยอดเงินสด (Cash)</small>
+              <div id="finalCash" class="fs-2 fw-bold text-danger">0.00</div>
+            </div>
+          </div>
+        </div>
+
+        <span id="displayDiff" class="d-none">0.00</span>
+        
+        <button type="button" id="btnSaveIncomeData" class="btn btn-success w-100 py-3 fw-bold shadow" onclick="saveIncomeData()">
+          <i class="bi bi-check-circle me-1"></i> ยืนยันการบันทึกข้อมูล
+        </button>
+      </div>
+    </div>
+
+    <!-- หน้าจอแจ้งบันทึกสำเร็จ -->
+    <div id="saveSuccessSection" class="d-none text-center animate__animated animate__zoomIn">
+      <div class="alert alert-success p-5 shadow">
+        <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+        <h2 class="mt-3 fw-bold">อัปเดตข้อมูลเรียบร้อยแล้ว!</h2>
+        <p class="text-muted">ระบบได้ทำการบันทึกข้อมูลแล้ว</p>
+        <hr>
+        <div class="d-grid gap-2 d-md-block mt-4">
+          <button type="button" class="btn btn-outline-primary btn-lg me-md-2" onclick="prepareNewRecord()">
+            <i class="bi bi-plus-circle me-1"></i> บันทึกรายการใหม่
+          </button>
+          <button type="button" class="btn btn-primary btn-lg" onclick="location.href='index.html'">
+            <i class="bi bi-house me-1"></i> กลับหน้าหลัก
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS เฉพาะหน้า Income -->
+  <script type="module" src="js/income.js"></script>
+</body>
+</html>

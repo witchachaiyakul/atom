@@ -1,0 +1,288 @@
+/* ==========================================================================
+   Atom Group Phi Phi - Back-Office Theme (Modern Ocean Navy & Emerald)
+   ========================================================================== */
+:root {
+  --bo-primary: #1e3a8a;         /* Deep Royal Navy */
+  --bo-primary-light: #3b82f6;   /* Bright Ocean Blue */
+  --bo-primary-dark: #172554;    /* Midnight Navy */
+  --bo-accent: #0d9488;          /* Phi Phi Emerald Teal */
+  --bo-bg: #f1f5f9;              /* Cool Slate Gray Background */
+  --bo-surface: #ffffff;         /* Pure White Card */
+  --bo-text: #1e293b;            /* Dark Slate Text */
+  --bo-muted: #64748b;           /* Muted Gray Text */
+  --bo-border: #e2e8f0;          /* Soft Border */
+}
+
+body {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: var(--bo-bg);
+  color: var(--bo-text);
+  margin: 0;
+}
+
+/* ==========================================================================
+   Navbar & Header
+   ========================================================================== */
+.navbar.bg-dark {
+  background: linear-gradient(135deg, var(--bo-primary-dark) 0%, var(--bo-primary) 100%) !important;
+  border-bottom: 3px solid var(--bo-accent);
+}
+
+.navbar-brand {
+  letter-spacing: 0.3px;
+}
+
+/* ==========================================================================
+   Login & No-Access Cards (กรณีเรียกใช้จากหน้า Login)
+   ========================================================================== */
+body.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 55%, #0f766e 100%);
+}
+
+.login-card {
+  background: var(--bo-surface);
+  padding: 40px 30px;
+  border-radius: 16px;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.25);
+  text-align: center;
+  max-width: 440px;
+  width: 92%;
+  border-top: 4px solid var(--bo-primary-light);
+}
+
+.line-btn {
+  background: linear-gradient(135deg, #06C755 0%, #05b34c 100%);
+  color: #ffffff;
+  text-decoration: none;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 13px 0;
+  border-radius: 10px;
+  display: block;
+  width: 100%;
+  border: none;
+  box-shadow: 0 4px 14px rgba(6, 199, 85, 0.35);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.line-btn:hover {
+  background: linear-gradient(135deg, #05b34c 0%, #049940 100%);
+  color: #ffffff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(6, 199, 85, 0.45);
+}
+
+.line-btn:disabled {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.dev-box {
+  background-color: #fffbeb;
+  border: 1px dashed #f59e0b;
+  border-radius: 10px;
+  padding: 16px;
+  margin-top: 24px;
+  text-align: left;
+}
+
+.dev-note {
+  font-size: 11px;
+  color: #78350f;
+}
+
+.no-access-avatar {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  border: 3px solid #ef4444;
+  object-fit: cover;
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+}
+
+/* ==========================================================================
+   Dashboard & Menu Cards (back-office/index.html)
+   ========================================================================== */
+.header-banner {
+  padding: 24px 15px 12px;
+}
+
+.menu-card {
+  background: var(--bo-surface);
+  border: 1px solid var(--bo-border);
+  border-radius: 16px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.menu-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 4px;
+  background: linear-gradient(90deg, var(--bo-primary-light), var(--bo-accent));
+  opacity: 0;
+  transition: opacity 0.22s ease;
+}
+
+.menu-card:hover {
+  transform: translateY(-5px);
+  border-color: #bfdbfe;
+  box-shadow: 0 12px 26px rgba(30, 58, 138, 0.12) !important;
+}
+
+.menu-card:hover::before {
+  opacity: 1;
+}
+
+.menu-card .icon-box {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #eff6ff 0%, #f0fdfa 100%);
+  color: var(--bo-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2rem;
+  transition: all 0.22s ease;
+}
+
+.menu-card:hover .icon-box {
+  background: linear-gradient(135deg, var(--bo-primary) 0%, var(--bo-accent) 100%);
+  color: #ffffff;
+  transform: scale(1.06);
+}
+
+/* ==========================================================================
+   Cards, Tables, Forms & Buttons (ทุกหน้าในระบบหลังบ้าน)
+   ========================================================================== */
+.card {
+  border-radius: 14px;
+  border-color: var(--bo-border);
+}
+
+.card-header.bg-dark {
+  background: linear-gradient(135deg, var(--bo-primary-dark) 0%, var(--bo-primary) 100%) !important;
+  border-bottom: none;
+}
+
+.table {
+  --bs-table-hover-bg: #f8fafc;
+}
+
+.table thead.table-light th {
+  background-color: #f8fafc;
+  color: var(--bo-primary-dark);
+  border-bottom: 2px solid var(--bo-border);
+  font-weight: 700;
+}
+
+.table thead.table-dark th {
+  background-color: var(--bo-primary-dark);
+  border-color: var(--bo-primary);
+}
+
+.form-control,
+.form-select {
+  border-radius: 9px;
+  border-color: #cbd5e1;
+}
+
+.form-control:focus,
+.form-select:focus {
+  border-color: var(--bo-primary-light);
+  box-shadow: 0 0 0 0.2rem rgba(59, 130, 246, 0.18);
+}
+
+.btn {
+  border-radius: 9px;
+  transition: all 0.18s ease;
+}
+
+.btn-primary {
+  background-color: var(--bo-primary);
+  border-color: var(--bo-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--bo-primary-dark);
+  border-color: var(--bo-primary-dark);
+}
+
+.btn-success {
+  background-color: #059669;
+  border-color: #059669;
+}
+
+.btn-success:hover {
+  background-color: #047857;
+  border-color: #047857;
+}
+
+.hover-shadow {
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.hover-shadow:hover {
+  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.12);
+  transform: translateY(-1px);
+}
+
+/* ==========================================================================
+   Print Styles (สำหรับหน้าออกรายงาน PDF)
+   ========================================================================== */
+@media print {
+  .no-print,
+  nav.navbar {
+    display: none !important;
+  }
+  .show-on-print {
+    display: block !important;
+  }
+  body {
+    background: #ffffff !important;
+  }
+  .card {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  .card-header.bg-dark {
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-bottom: 2px solid #000000 !important;
+    padding-left: 0 !important;
+  }
+}
+
+    @media print {
+      .no-print, nav.navbar {
+        display: none !important;
+      }
+      .show-on-print {
+        display: block !important;
+      }
+      body {
+        background: #fff !important;
+      }
+      .card {
+        box-shadow: none !important;
+        border: none !important;
+      }
+      .card-header.bg-dark {
+        background-color: #fff !important;
+        color: #000 !important;
+        border-bottom: 2px solid #000 !important;
+        padding-left: 0 !important;
+      }
+    }

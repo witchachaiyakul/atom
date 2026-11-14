@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบสรุปตั้งเบิกเงินเดือนพนักงาน - HR Atom Group</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom HR CSS -->
+  <link rel="stylesheet" href="../css/hr.css">
+
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loader" class="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+      <div class="mt-2 fw-bold text-dark">กำลังประมวลผลข้อมูลเงินเดือน...</div>
+    </div>
+  </div>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand mb-0 h1 fs-6 text-decoration-none" href="index.html">
+        <i class="bi bi-people-fill me-2 text-warning"></i>ระบบงานบุคคล (HR) - Atom Group Phi Phi
+      </a>
+
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile"
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #fde047;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- พื้นที่หลัก: ระบบสรุปตั้งเบิกเงินเดือนพนักงาน -->
+  <div class="container-fluid px-4 pb-5" id="payrollSection">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+        <i class="bi bi-cash-coin me-2"></i>ระบบสรุปตั้งเบิกเงินเดือนพนักงาน
+      </h3>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary btn-sm fw-bold" onclick="syncAllHousingData()">
+          🔄 Sync สวัสดิการพื้นฐานทั้งหมด
+        </button>
+        <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
+          <i class="bi bi-house-door"></i> กลับหน้าหลัก
+        </button>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-4 p-3 bg-white rounded shadow-sm border-start border-5 border-warning">
+      <div class="col-md-3">
+        <label class="small fw-bold">เลือกรอบเดือนการตั้งเบิก</label>
+        <input type="month" id="payrollMonthSelect" class="form-control" onchange="loadPayrollGridData()">
+      </div>
+
+      <div class="col-md-2">
+        <label class="small fw-bold text-primary">สิทธิ Day Off (วัน/เดือน)</label>
+        <input type="number" id="payrollDayOffQuota" class="form-control fw-bold text-center border-primary" min="0" placeholder="โหลดข้อมูล..." onfocus="this.setAttribute('data-old', this.value)" onchange="handleDayOffQuotaChange(this)">
+      </div>
+
+      <div class="col-md-3">
+        <label class="small fw-bold">กรองชั่วคราวเฉพาะ สาขา/ร้าน</label>
+        <select id="payrollShopSelect" class="form-select fw-bold border-success" onchange="filterPayrollByShop()">
+          <option value="">-- แสดงทุกสาขา/ร้าน (ทั้งหมด) --</option>
+        </select>
+      </div>
+      <div class="col-md-4 d-flex align-items-end justify-content-end small text-muted pb-1">
+        💡Tip: คลิกตัวเลขวันทำงานของพนักงานเพื่อเปิดปฏิทินแก้ไขเวลารายวันได้ทันที
+      </div>
+    </div>
+
+    <div class="table-responsive shadow-sm rounded bg-white" style="max-height: 65vh; overflow: auto;">
+      <table class="table table-bordered table-sm align-middle small text-center mb-0" style="min-width: 3300px; font-size: 0.8rem;">
+        <thead class="table-dark">
+          <tr>
+            <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; width: 60px;" rowspan="2">ID</th>
+            <th style="position: sticky; top: 0; left: 60px; background-color: #212529; color: white; z-index: 15; width: 140px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 75px;" rowspan="2">ชื่อเล่น</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 120px;" class="text-start" rowspan="2">ตำแหน่ง</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 110px;" rowspan="2">สาขา/ร้าน</th>
+
+            <th style="position: sticky; top: 0; background-color: #6c757d; color: white; z-index: 10;" class="text-center" colspan="11">6. รวมจำนวน (วัน / ชม. OT)</th>
+
+            <th style="position: sticky; top: 0; background-color: #cfe2ff; color: #084298; z-index: 12; width: 100px;" rowspan="2" class="align-middle fw-bold">ฐานเงินเดือน</th>
+            <th style="position: sticky; top: 0; background-color: #cfe2ff; color: #084298; z-index: 12; width: 110px;" rowspan="2" class="align-middle fw-bold">ประเภทคำนวณ</th>
+            <th style="position: sticky; top: 0; background-color: #cfe2ff; color: #084298; z-index: 12; width: 110px;" rowspan="2" class="align-middle fw-bold">ดึงข้อมูลจากระบบ</th>
+
+            <th style="position: sticky; top: 0; background-color: #198754; color: white; z-index: 10;" class="text-center" colspan="6">7. รวมรายรับ (บาท)</th>
+            <th style="position: sticky; top: 0; background-color: #dc3545; color: white; z-index: 10;" class="text-center" colspan="6">8. รวมรายจ่าย (บาท)</th>
+
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 90px;" rowspan="2">รวมรับ</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 90px;" rowspan="2">รวมจ่าย</th>
+            <th style="position: sticky; top: 0; background-color: #0d6efd; color: white; z-index: 10; width: 110px;" rowspan="2">คงเหลือสุทธิ</th>
+          </tr>
+          <tr>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">ทำงาน</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #6f42c1; z-index: 9; font-weight: bold;" width="50px" class="x-small">ครึ่งวัน</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">Sick</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">Off</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">ขาด</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">สาย</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">ลา</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #212529; z-index: 9;" width="45px" class="x-small">Extra Day</th>
+
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9; font-weight: bold;" width="55px" class="x-small">Full/PH</th>
+            <th style="position: sticky; top: 31px; background-color: #fbf9ff; color: #6f42c1; z-index: 9; font-weight: bold;" width="55px" class="x-small">Half/PH</th>
+
+            <th style="position: sticky; top: 31px; background-color: #ffc107; color: #212529; z-index: 9;" width="50px" class="x-small">OT(ชม.)</th>
+
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="85px" class="text-end">เงินเดือน</th>
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="75px" class="text-end">ค่าอาหาร</th>
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="75px" class="text-end">ค่าที่พัก</th>
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="80px" class="text-end">ค่า Full</th>
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="75px" class="text-end">ค่า OT</th>
+            <th style="position: sticky; top: 31px; background-color: #e6f9ed; color: #198754; z-index: 9;" width="85px" class="text-end">ค่า Extra Day</th>
+
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9;" width="75px" class="text-end">Advance</th>
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9;" width="75px" class="text-end">ค่าห้อง</th>
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9;" width="75px" class="text-end">ค่าประกันสังคม</th>
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9;" width="75px" class="text-end">อื่นๆ</th>
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9; font-weight: bold;" width="75px" class="text-end">ขาดงาน</th>
+            <th style="position: sticky; top: 31px; background-color: #fdf2f2; color: #dc3545; z-index: 9; font-weight: bold;" width="90px" class="text-end">Day Off เกิน</th>
+          </tr>
+        </thead>
+        <tbody id="payrollTableBody">
+          <tr><td colspan="34" class="text-center text-muted py-5">กรุณาเลือกเดือน/ปี ด้านบนเพื่อดึงสถิติตั้งเบิกเงินเดือนคลาวด์</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="row g-2 mt-3">
+      <div class="col-md-5 d-flex gap-2">
+        <button id="btnPrintPayroll" class="btn btn-danger flex-grow-1 fw-bold py-2 d-none" onclick="printPayrollPDF()">
+          <i class="bi bi-file-earmark-pdf-fill"></i> 📄 พิมพ์รายงาน / สร้าง PDF ตามที่แสดง
+        </button>
+        <button id="btnPrintSlips" type="button" class="btn btn-secondary fw-bold py-2 d-none" onclick="printIndividualSlipsPDF()">
+          📥 พิมพ์สลิปเงินเดือน (แยกรายคน)
+        </button>
+      </div>
+      <div class="col-md-7">
+        <button id="btnSavePayroll" class="btn btn-primary w-100 fw-bold py-2 d-none" onclick="submitBatchPayrollData()">
+          <i class="bi bi-check-all"></i> 💰 ยืนยันการบันทึกตั้งเบิกเงินเดือนเฉพาะรายการที่แสดงอยู่
+        </button>
+      </div>
+    </div>
+
+    <!-- Modal แก้ไขเวลารายวันจากหน้าปฏิทิน -->
+    <div class="modal fade" id="payrollDailyEditModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true" style="z-index: 2000;">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0">
+          <div class="modal-header bg-warning text-dark py-2">
+            <h5 class="modal-title fw-bold" id="payrollDailyModalTitle">แก้ไขบันทึกเวลารายวัน</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body p-3">
+            <form id="payrollDailyForm">
+              <input type="hidden" id="popEmpId">
+              <input type="hidden" id="popDate">
+
+              <div class="row g-2">
+                <div class="col-12 bg-light p-2 rounded mb-2 border">
+                  <div class="small text-muted">พนักงาน: <strong id="popEmpName" class="text-dark"></strong></div>
+                  <div class="small text-muted">ประจำวันที่: <strong id="popDateFormatted" class="text-primary"></strong></div>
+                </div>
+
+                <div class="col-md-6">
+                  <label class="small fw-bold">สถานะเข้างาน</label>
+                  <select id="popStatus" class="form-select form-select-sm fw-bold border-primary">
+                    <option value="Full">Full (เต็มวัน)</option>
+                    <option value="Half">Half (ครึ่งวัน)</option>
+                    <option value="Sick">Sick (ลาป่วย)</option>
+                    <option value="Off">Off (วันหยุด)</option>
+                    <option value="Absent">Absent (ขาดงาน)</option>
+                    <option value="Late">Late (มาสาย)</option>
+                    <option value="Leave">Leave (ลากิจ/พักร้อน)</option>
+                    <option value="Extra Day">Extra Day (วันทำงานพิเศษ)</option>
+                    <option value="Full/PH">Full/PH (นักขัตฤกษ์เต็มวัน)</option>
+                    <option value="Half/PH">Half/PH (นักขัตฤกษ์ครึ่งวัน)</option>
+                    <option value="Without Pay">Without Pay (หยุดไม่รับค่าจ้าง)</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="small fw-bold text-warning">ชั่วโมง OT (ชม.)</label>
+                  <input type="number" id="popOtHours" class="form-control form-control-sm text-center border-warning" min="0" step="0.5" value="0">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="small text-muted">เวลาเข้า 1</label>
+                  <input type="text" id="popIn1" class="form-control form-control-sm" placeholder="08:00">
+                </div>
+                <div class="col-md-6">
+                  <label class="small text-muted">เวลาออก 1</label>
+                  <input type="text" id="popOut1" class="form-control form-control-sm" placeholder="17:00">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="small text-muted">เวลาเข้า 2</label>
+                  <input type="text" id="popIn2" class="form-control form-control-sm" placeholder="18:00">
+                </div>
+                <div class="col-md-6">
+                  <label class="small text-muted">เวลาออก 2</label>
+                  <input type="text" id="popOut2" class="form-control form-control-sm" placeholder="22:00">
+                </div>
+
+                <div class="col-md-6">
+                  <label class="small text-muted">สายกี่นาที (ถ้ามี)</label>
+                  <input type="number" id="popLateMin" class="form-control form-control-sm text-center" min="0" value="0">
+                </div>
+                <div class="col-md-6">
+                  <label class="small text-muted">ปัญหาเครื่องสแกน</label>
+                  <input type="text" id="popScanIssue" class="form-control form-control-sm" placeholder="เช่น Early Check-out">
+                </div>
+
+                <div class="col-12">
+                  <label class="small text-muted">งานที่ทำวันนี้ / สถานที่</label>
+                  <input type="text" id="popTodayWork" class="form-control form-control-sm" placeholder="ระบุรายละเอียด">
+                </div>
+
+                <div class="col-12">
+                  <label class="small text-muted">หมายเหตุบันทึก</label>
+                  <textarea id="popRemarks" class="form-control form-control-sm" rows="2" placeholder="ระบุข้อความสั้นๆ"></textarea>
+                </div>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="button" class="btn btn-sm btn-success fw-bold px-3" onclick="savePayrollDailyModal()"><i class="bi bi-save"></i> บันทึกข้อมูล</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Module -->
+  <script type="module" src="js/payroll.js"></script>
+</body>
+</html>

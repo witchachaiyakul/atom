@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>รายงานสรุปการเข้างานพนักงานรายเดือน - HR Atom Group</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom HR CSS -->
+  <link rel="stylesheet" href="../css/hr.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loader" class="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+      <div class="mt-2 fw-bold text-dark">กำลังประมวลผลรายงานรายเดือน...</div>
+    </div>
+  </div>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand mb-0 h1 fs-6 text-decoration-none" href="index.html">
+        <i class="bi bi-people-fill me-2 text-warning"></i>ระบบงานบุคคล (HR) - Atom Group Phi Phi
+      </a>
+
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile"
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #fde047;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- พื้นที่หลัก: รายงานสรุปการเข้างานพนักงานรายเดือน -->
+  <div class="container-fluid px-4 pb-5" id="monthlyReportSection">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+        <i class="bi bi-calendar-check me-2"></i>รายงานสรุปการเข้างานพนักงานรายเดือน
+      </h3>
+      <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <!-- แผงควบคุมเลือกเดือนและคำอธิบายสัญลักษณ์ -->
+    <div class="row g-2 mb-4 p-3 bg-white rounded shadow-sm border-start border-5 border-warning">
+      <div class="col-md-3">
+        <label class="small fw-bold">เลือกเดือน/ปี ที่ต้องการตรวจสอบ</label>
+        <input type="month" id="reportMonthSelect" class="form-control" onchange="loadMonthlyReportData()">
+      </div>
+      <div class="col-md-3">
+        <label class="small fw-bold">กรองสาขา/ร้าน</label>
+        <select id="reportShopFilter" class="form-select" onchange="filterMonthlyReportRows()">
+          <option value="ALL">-- แสดงทุกสาขา/ร้าน --</option>
+        </select>
+      </div>
+      <div class="col-md-6 d-flex align-items-end justify-content-end small text-muted pb-1 flex-wrap">
+        💡 สัญลักษณ์ย่อ:
+        <span class="mx-1 text-success fw-bold">Full</span>=ทำงานปกติ |
+        <span class="mx-1 fw-bold" style="color: #6f42c1">Half</span>=ครึ่งวัน |
+        <span class="mx-1 text-danger fw-bold">S</span>=Sick |
+        <span class="mx-1 text-secondary fw-bold">Off</span>=Day Off |
+        <span class="mx-1 text-danger fw-bold">Abs</span>=ขาดงาน |
+        <span class="mx-1 text-warning fw-bold">Late</span>=สาย |
+        <span class="mx-1 text-primary fw-bold">Lev</span>=ลา |
+        <span class="mx-1 text-info fw-bold">Ex</span>=Extra Day |
+        <span class="mx-1 text-success fw-bold">F/PH</span>=Full/PH |
+        <span class="mx-1 fw-bold" style="color: #6f42c1">H/PH</span>=Half/PH |
+        <span class="mx-1 fw-bold" style="color: #721c24">W.P</span>=Without Pay
+      </div>
+    </div>
+
+    <!-- ตาราง Matrix สรุปการเข้างานรายเดือน -->
+    <div class="table-responsive shadow-sm rounded bg-white" style="max-height: 70vh; overflow: auto;">
+      <table class="table table-bordered table-sm align-middle small text-center mb-0" style="min-width: 2300px; font-size: 0.8rem;">
+        <thead>
+          <tr>
+            <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; width: 60px;" rowspan="2">ID</th>
+            <th style="position: sticky; top: 0; left: 60px; background-color: #212529; color: white; z-index: 15; width: 140px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 75px;" rowspan="2">ชื่อเล่น</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 120px;" class="text-start" rowspan="2">ตำแหน่ง</th>
+            <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 110px;" rowspan="2">ร้าน</th>
+            <th style="position: sticky; top: 0; background-color: #6c757d; color: white; z-index: 10;" class="text-center" colspan="12">รวมจำนวน (วัน / ชม. OT)</th>
+          </tr>
+          <tr>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #198754; z-index: 9; font-weight: bold;" width="45px" class="x-small">Full</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #6f42c1; z-index: 9; font-weight: bold;" width="50px" class="x-small">Half</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #dc3545; z-index: 9;" width="45px" class="x-small">Sick</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #6c757d; z-index: 9;" width="45px" class="x-small">Off</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #dc3545; z-index: 9; font-weight: bold;" width="45px" class="x-small">Abs</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #ffc107; z-index: 9; font-weight: bold;" width="45px" class="x-small">Late</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #0d6efd; z-index: 9;" width="45px" class="x-small">Lev</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #0dcaf0; z-index: 9; font-weight: bold;" width="45px" class="x-small">Ex</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #198754; z-index: 9; font-weight: bold;" width="55px" class="x-small">F/PH</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #6f42c1; z-index: 9; font-weight: bold;" width="55px" class="x-small">H/PH</th>
+            <th style="position: sticky; top: 31px; background-color: #f8f9fa; color: #721c24; z-index: 9; font-weight: bold;" width="55px" class="x-small">W.Pay</th>
+            <th style="position: sticky; top: 31px; background-color: #ffc107; color: #212529; z-index: 9;" width="50px" class="x-small">OT(ชม.)</th>
+          </tr>
+        </thead>
+        <tbody id="monthlyTableBody">
+          <tr><td colspan="17" class="text-center text-muted py-5">กรุณาเลือกเดือน/ปี ด้านบนเพื่อดึงรายงานสรุป</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- JS Module -->
+  <script type="module" src="js/monthly-report.js"></script>
+</body>
+</html>

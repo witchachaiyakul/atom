@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกบิล Cash Out - Atom Group Phi Phi</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  
+  <!-- Custom CSS -->
+  <link rel="stylesheet" href="../css/back-office.css">
+
+  <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <div class="d-flex align-items-center gap-2">
+        <button type="button" onclick="location.href='index.html'" class="btn btn-outline-warning btn-sm">
+          <i class="bi bi-arrow-left"></i> หน้าหลัก
+        </button>
+        <span class="navbar-brand mb-0 h1 fs-6 ms-2">
+          <i class="bi bi-receipt-cutoff me-1 text-warning"></i>ระบบหลังบ้าน Atom Group Phi Phi
+        </span>
+      </div>
+      
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" 
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #deff9a;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer"></div>
+
+  <!-- พื้นที่หลักหน้าบันทึกบิล Cash Out -->
+  <div id="cashoutForm" class="container py-2 pb-5 form-container">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="text-danger mb-0"><i class="bi bi-cash-coin me-2"></i>บันทึกบิล Cash Out</h3>
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <!-- แถบตัวกรองข้อมูล -->
+    <div class="row g-2 mb-4 bg-light p-3 rounded shadow-sm border">
+      <div class="col-md-4">
+        <label class="form-label small fw-bold">เลือกวันที่</label>
+        <input type="date" id="cashoutFilterDate" class="form-control" onchange="loadAllCashouts()">
+      </div>
+     
+      <div class="col-md-6">
+        <label class="form-label small fw-bold">กรองตามชื่อร้าน</label>
+        <select id="cashoutFilterShop" class="form-select" onchange="filterCashoutTable()">
+          <option value="">-- ทุกร้าน --</option>
+          <option value="Atom">Atom</option>
+          <option value="Atom_Beach">Atom Beach</option>
+          <option value="Good_Time">Good Time</option>
+          <option value="Paradise">Paradise</option>
+          <option value="Tiger_King_Bar_&_Bistro">Tiger King</option>
+        </select>
+      </div>
+      
+      <div class="col-md-2 d-flex align-items-end">
+        <button type="button" class="btn btn-outline-secondary w-100" onclick="loadAllCashouts()">
+          <i class="bi bi-arrow-clockwise"></i> รีเฟรช
+        </button>
+      </div>
+    </div>
+
+    <!-- พื้นที่แสดงรายการสรุปประจำวัน / รายการบิลย่อย -->
+    <div id="cashoutListContainer">
+      <div class="text-center py-5 bg-white border rounded shadow-sm">
+        <div class="spinner-border text-danger"></div>
+        <p class="mt-2 mb-0 text-muted">กำลังโหลดข้อมูล Cash Out...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal ตรวจสอบและแก้ไขรายการภายในบิล Cash Out -->
+  <div class="modal fade" id="cashoutDetailModal" data-bs-backdrop="static" tabindex="-1" aria-labelledby="cashoutDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title fw-bold" id="cashoutDetailModalLabel">
+            <i class="bi bi-search me-1"></i> ตรวจสอบและแก้ไขรายการภายในบิล Cash Out
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body bg-light">
+          <div class="row g-3 h-100">
+            
+            <!-- ฝั่งซ้าย: แสดงรูปภาพ/เครื่องมือซูม -->
+            <div class="col-md-8 text-center d-flex flex-column bg-white p-3 border rounded shadow-sm" style="min-height: 450px;">
+              <div class="mb-2 btn-group btn-group-sm w-100" role="group">
+                <button type="button" class="btn btn-outline-dark" onclick="controlPopupImage('zoomIn')"><i class="bi bi-zoom-in"></i> ซูมเข้า</button>
+                <button type="button" class="btn btn-outline-dark" onclick="controlPopupImage('zoomOut')"><i class="bi bi-zoom-out"></i> ซูมออก</button>
+                <button type="button" class="btn btn-outline-dark" onclick="controlPopupImage('rotateLeft')"><i class="bi bi-arrow-counterclockwise"></i> หมุนซ้าย</button>
+                <button type="button" class="btn btn-outline-dark" onclick="controlPopupImage('rotateRight')"><i class="bi bi-arrow-clockwise"></i> หมุนขวา</button>
+                <button type="button" class="btn btn-outline-danger" onclick="controlPopupImage('reset')"><i class="bi bi-arrow-repeat"></i> รีเซ็ต</button>
+              </div>
+              
+              <div id="popupImgWrapper" class="border rounded bg-dark d-flex align-items-center justify-content-center overflow-hidden position-relative flex-grow-1">
+                <img id="popupBillImgTarget" src="" class="img-fluid" style="max-height: 100%; object-fit: contain; position: absolute; transform: scale(1) translate(0px, 0px) rotate(0deg); cursor: grab; user-select: none; -webkit-user-drag: none; transition: transform 0.05s ease-out;">
+
+                <div id="popupDrivePlaceholder" class="text-center p-3 text-white d-none">
+                  <i class="bi bi-folder-symlink-fill text-success display-2 mb-2"></i>
+                  <h6 class="fw-bold mb-3">บิลประวัติเก่าบน Google Drive / ไฟล์แนบ</h6>
+                  <a id="popupDriveBtnLink" href="#" target="_blank" class="btn btn-success fw-bold px-4 shadow-sm">
+                    <i class="bi bi-box-arrow-up-right"></i> เปิดดูไฟล์/โฟลเดอร์รูปภาพ
+                  </a>
+                </div>
+              </div>
+            </div> 
+
+            <!-- ฝั่งขวา: ตารางและช่องแก้ไขข้อมูลบิล -->
+            <div class="col-md-4 d-flex flex-column bg-white p-3 border rounded shadow-sm">
+              <div class="alert alert-secondary py-2 mb-2 small fw-bold" id="popupBillMetaDisplay"></div>
+              
+              <!-- ช่องแก้ไข Supplier ขนาบข้างกับช่องแก้ไขร้าน -->
+              <div class="p-2 mb-2 bg-light border rounded shadow-xs">
+                <div class="row g-2">
+                  <!-- 1. ช่องแก้ไข Supplier -->
+                  <div class="col-md-7">
+                    <div class="d-flex align-items-center gap-2">
+                      <label for="popupBillSupplierInput" class="small fw-bold text-secondary m-0 text-nowrap">
+                        <i class="bi bi-truck text-primary"></i> Supplier:
+                      </label>
+                      <input type="text" 
+                             id="popupBillSupplierInput" 
+                             class="form-control form-control-sm border-primary-subtle fw-bold text-primary bg-white" 
+                             list="supplierCategoryOptions" 
+                             placeholder="ระบุ Supplier..." 
+                             oninput="savePopupSupplierToCache()">
+                      <datalist id="supplierCategoryOptions"></datalist>
+                    </div>
+                  </div>
+
+                  <!-- 2. ช่องแก้ไขร้านค้า (Shop Bill) -->
+                  <div class="col-md-5">
+                    <div class="d-flex align-items-center gap-2">
+                      <label for="popupBillShopSelect" class="small fw-bold text-secondary m-0 text-nowrap">
+                        <i class="bi bi-shop text-info"></i> ร้าน:
+                      </label>
+                      <select id="popupBillShopSelect" class="form-select form-select-sm border-info-subtle fw-bold text-dark bg-white" onchange="savePopupShopToCache()">
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- ตารางรายการสินค้า -->
+              <div class="table-responsive border rounded flex-grow-1 mb-2" style="max-height: 360px;"> 
+                <table class="table table-sm table-bordered table-hover mb-0">
+                  <thead class="table-dark small sticky-top">
+                    <tr>
+                      <th>รายการ</th>
+                      <th class="text-end" style="width: 100px;">ราคา/หน่วย</th>
+                      <th class="text-center" style="width: 80px;">จำนวน</th>
+                      <th class="text-end" style="width: 110px;">รวม (บาท)</th>
+                      <th style="width: 40px;"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="popupItemsTableBody">
+                  </tbody>
+                </table>
+              </div>
+              
+              <button type="button" class="btn btn-sm btn-outline-primary fw-bold align-self-end" onclick="addPopupItemRow()">
+                <i class="bi bi-plus-circle"></i> เพิ่มรายการ
+              </button>
+            </div> 
+          </div> 
+        </div> 
+        
+        <div class="modal-footer bg-white">
+          <button type="button" class="btn btn-secondary px-4" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="button" class="btn btn-danger px-4 fw-bold" onclick="confirmBillEdits()">
+            <i class="bi bi-check-lg"></i> ยืนยันการแก้ไขข้อมูลบิลนี้
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal แจ้งเตือนระบบ -->
+  <div class="modal fade" id="systemNotificationModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true" style="z-index: 2000;">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 420px;">
+      <div class="modal-content border-0 shadow-lg">
+        <div id="notiModalHeader" class="modal-header text-white py-2">
+          <h5 class="modal-title fw-bold" id="notiModalTitle">🎯 แจ้งเตือนระบบ</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body py-4 text-center bg-white rounded-bottom">
+          <div id="notiModalIcon" class="mb-2 display-4"></div>
+          <p id="notiModalMessage" class="fw-bold text-dark m-0 fs-6" style="white-space: pre-line; line-height: 1.6;"></p>
+        </div>
+        <div class="modal-footer bg-light py-2 d-flex justify-content-center gap-2 border-top-0">
+          <button type="button" id="notiCancelBtn" class="btn btn-sm btn-secondary px-3 fw-bold" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="button" id="notiConfirmBtn" class="btn btn-sm px-4 fw-bold shadow-xs">ตกลง</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS เฉพาะหน้า Cash Out -->
+  <script type="module" src="js/cashout.js"></script>
+</body>
+</html>

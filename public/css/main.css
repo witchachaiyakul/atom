@@ -103,3 +103,42 @@ body.login-page {
   color: #0d6efd;
   margin-bottom: 12px;
 }
+/* ==========================================================================
+   System Selector Buttons (login.html)
+   ========================================================================== */
+.system-choice-btn {
+  border: 2px solid #e9ecef;
+  border-radius: 14px;
+  padding: 18px 16px;
+  background: #ffffff;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.system-choice-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.system-choice-btn.choice-backoffice:hover {
+  border-color: #0d6efd;
+  background-color: #f8fbff;
+}
+
+.system-choice-btn.choice-hr:hover {
+  border-color: #198754;
+  background-color: #f6fcf9;
+}
+
+.system-icon-box {
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  flex-shrink: 0;
+}

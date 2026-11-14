@@ -5,24 +5,58 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>เข้าสู่ระบบ - Atom Group Phi Phi</title>
   
-  <!-- Bootstrap & Libraries -->
+  <!-- Bootstrap & Icons -->
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <link rel="stylesheet" type="text/css" href="https://cdn.datatables.net/1.13.4/css/dataTables.bootstrap5.min.css">
   
   <!-- Custom CSS -->
   <link rel="stylesheet" href="css/main.css">
-  
-  <script src="https://code.jquery.com/jquery-3.5.1.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/jquery.dataTables.min.js"></script>
-  <script src="https://cdn.datatables.net/1.13.4/js/dataTables.bootstrap5.min.js"></script>
 </head>
 <body class="login-page">
 
-  <!-- 1. หน้า Login หลัก -->
-  <div id="loginSection" class="login-card">
-    <div class="fs-5 fw-bold text-dark mb-2">🔒 ระบบหลังบ้าน Atom Group Phi Phi</div>
+  <!-- 0. หน้าเลือกระบบ (ระบบหลังบ้าน vs ระบบ HR) -->
+  <div id="systemSelectSection" class="login-card">
+    <div class="fs-5 fw-bold text-dark mb-1">🏢 Atom Group Phi Phi</div>
+    <p class="text-muted small mb-4">กรุณาเลือกระบบที่ต้องการเข้าใช้งาน</p>
+
+    <div class="d-grid gap-3">
+      <!-- ตัวเลือกที่ 1: ระบบหลังบ้าน -->
+      <button type="button" class="system-choice-btn choice-backoffice d-flex align-items-center gap-3" onclick="selectTargetSystem('back-office')">
+        <div class="system-icon-box bg-primary bg-opacity-10 text-primary">
+          <i class="bi bi-building-gear"></i>
+        </div>
+        <div class="flex-grow-1">
+          <div class="fw-bold text-dark fs-6">ระบบหลังบ้าน (Back-Office)</div>
+          <div class="text-muted small">บันทึกรายรับ-รายจ่าย, บิล Cash Out, ตรวจสอบ Audit</div>
+        </div>
+        <i class="bi bi-chevron-right text-muted"></i>
+      </button>
+
+      <!-- ตัวเลือกที่ 2: ระบบ HR -->
+      <button type="button" class="system-choice-btn choice-hr d-flex align-items-center gap-3" onclick="selectTargetSystem('hr')">
+        <div class="system-icon-box bg-success bg-opacity-10 text-success">
+          <i class="bi bi-people-fill"></i>
+        </div>
+        <div class="flex-grow-1">
+          <div class="fw-bold text-dark fs-6">ระบบ HR (งานบุคคล)</div>
+          <div class="text-muted small">ข้อมูลพนักงาน, ลงเวลาเข้า-ออกงาน, การลางาน</div>
+        </div>
+        <i class="bi bi-chevron-right text-muted"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- 1. หน้า Login แยกตามระบบที่เลือก -->
+  <div id="loginSection" class="login-card d-none">
+    <!-- แถบแสดงระบบที่เลือก + ปุ่มเปลี่ยนระบบ -->
+    <div class="d-flex justify-content-between align-items-center mb-3 pb-2 border-bottom">
+      <button type="button" class="btn btn-sm btn-outline-secondary py-1 px-2" onclick="backToSystemSelect()">
+        <i class="bi bi-arrow-left me-1"></i>เปลี่ยนระบบ
+      </button>
+      <span id="selectedSystemBadge" class="badge bg-primary px-3 py-2">ระบบหลังบ้าน</span>
+    </div>
+
+    <div id="loginSystemTitle" class="fs-5 fw-bold text-dark mb-2">🔒 ระบบหลังบ้าน Atom Group Phi Phi</div>
     <p class="text-muted small mb-4">
       เพื่อความปลอดภัยของข้อมูลภายใน<br>กรุณายืนยันตัวตนผ่าน LINE เพื่อเข้าใช้งานระบบ
     </p>
@@ -61,7 +95,7 @@
     <img id="noAccessPic" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" 
          alt="Profile" class="no-access-avatar mb-3">
     <h5 class="text-danger fw-bold mb-1">❌ ไม่สามารถเข้าใช้งานระบบได้</h5>
-    <p class="text-muted small mb-3">
+    <p id="noAccessReasonText" class="text-muted small mb-3">
       บัญชี: <b id="noAccessName">-</b> ยังไม่ได้รับอนุมัติสิทธิ์ หรือสถานะไม่เป็น <code>active</code>
     </p>
     <div class="alert alert-danger text-start small mb-3">
@@ -69,7 +103,7 @@
       <input type="text" id="noAccessIdText" class="form-control form-control-sm font-monospace fw-bold mt-2 bg-white" readonly onclick="this.select()">
     </div>
     <button onclick="location.href='login.html'" class="btn btn-outline-secondary btn-sm w-100">
-      กลับหน้าเข้าสู่ระบบ
+      กลับหน้าเลือกระบบ
     </button>
   </div>
 

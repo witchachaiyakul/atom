@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ทะเบียนข้อมูลพนักงาน - HR Atom Group</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+  
+  <!-- Custom HR CSS -->
+  <link rel="stylesheet" href="../css/hr.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loader" class="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+      <div class="mt-2 fw-bold text-dark">กำลังประมวลผล...</div>
+    </div>
+  </div>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand mb-0 h1 fs-6 text-decoration-none" href="index.html">
+        <i class="bi bi-people-fill me-2 text-warning"></i>ระบบงานบุคคล (HR) - Atom Group Phi Phi
+      </a>
+      
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile" 
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #fde047;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- พื้นที่หลัก: ทะเบียนข้อมูลพนักงาน -->
+  <div class="container pb-5" id="employeeSection">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+        <i class="bi bi-person-vcard me-2"></i>ทะเบียนข้อมูลพนักงาน
+      </h3>
+      <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <!-- กล่องค้นหาและคัดกรอง -->
+    <div class="row g-2 mb-4 p-3 bg-white rounded shadow-sm border-start border-5 border-warning">
+      <div class="col-md-4">
+        <label class="small fw-bold">ค้นหาชื่อ / ชื่อเล่น / รหัสพนักงาน</label>
+        <input type="text" id="searchName" class="form-control" placeholder="พิมพ์ชื่อหรือรหัส..." onkeyup="filterData()">
+      </div>
+      <div class="col-md-4">
+        <label class="small fw-bold">เลือกสาขา/ร้าน</label>
+        <select id="searchWork" class="form-select" onchange="filterData()">
+          <option value="">-- ทุกสาขา/ร้าน --</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <label class="small fw-bold">สถานะ</label>
+        <select id="searchStatus" class="form-select" onchange="filterData()">
+          <option value="">-- ทุกสถานะ --</option>
+          <option value="ปกติ" selected>ปกติ</option>
+          <option value="ออก">ออก</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- รายการการ์ดพนักงาน -->
+    <div id="employeeList"></div>
+  </div>
+
+  <!-- Modal รายละเอียดและแก้ไขข้อมูลพนักงาน -->
+  <div class="modal fade" id="detailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+      <div class="modal-content">
+        <div class="modal-header text-white" style="background: var(--secondary-orange);">
+          <h5 class="modal-title fw-bold">รายละเอียดข้อมูลพนักงาน</h5>
+          <div class="ms-auto btn-print-action">
+            <button type="button" class="btn btn-light btn-sm fw-bold me-2" onclick="printPDF()">
+              <i class="bi bi-printer me-1"></i>พิมพ์ / PDF
+            </button>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>
+        <div class="modal-body bg-light" id="modalContent"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal แจ้งเตือนบันทึกสำเร็จ -->
+  <div class="modal fade" id="successModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-sm modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-body text-center p-4">
+          <i class="bi bi-check-circle-fill text-success" style="font-size: 3rem;"></i>
+          <h6 class="mt-3 fw-bold text-dark" id="successModalBody">บันทึกเรียบร้อย!</h6>
+          <button type="button" class="btn btn-success btn-sm px-4 mt-3" data-bs-dismiss="modal">ตกลง</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal ขยายดูรูปภาพเต็มจอ -->
+  <div class="modal fade" id="imagePreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+      <div class="modal-content bg-transparent border-0">
+        <div class="modal-header border-0 p-0">
+          <button type="button" class="btn-close btn-close-white ms-auto p-3" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body text-center p-0">
+          <img id="fullImagePreview" src="" alt="Full Preview" class="img-fluid rounded shadow-lg" style="max-height: 90vh;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JS Module -->
+  <script type="module" src="js/employee.js"></script>
+</body>
+</html>

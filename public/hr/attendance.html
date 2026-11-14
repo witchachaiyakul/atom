@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>บันทึกเวลาทำงานรายวัน - HR Atom Group</title>
+
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- Custom HR CSS -->
+  <link rel="stylesheet" href="../css/hr.css">
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</head>
+<body>
+
+  <!-- Loading Overlay -->
+  <div id="loader" class="loading-overlay">
+    <div class="text-center">
+      <div class="spinner-border text-warning" style="width: 3rem; height: 3rem;" role="status"></div>
+      <div class="mt-2 fw-bold text-dark">กำลังโหลดข้อมูลเวลาทำงาน...</div>
+    </div>
+  </div>
+
+  <!-- Navbar ส่วนหัวแสดงข้อมูลผู้ใช้งาน -->
+  <nav class="navbar navbar-dark bg-dark px-3 shadow-sm mb-4">
+    <div class="container-fluid">
+      <a class="navbar-brand mb-0 h1 fs-6 text-decoration-none" href="index.html">
+        <i class="bi bi-people-fill me-2 text-warning"></i>ระบบงานบุคคล (HR) - Atom Group Phi Phi
+      </a>
+
+      <div class="d-none align-items-center text-white gap-3" id="userHeaderProfile">
+        <div class="d-flex align-items-center">
+          <img id="headerUserImg" src="https://cdn-icons-png.flaticon.com/512/149/149071.png" alt="Profile"
+               class="rounded-circle me-2" style="width: 38px; height: 38px; object-fit: cover; border: 2px solid #fde047;">
+          <div class="lh-sm">
+            <div class="fw-bold small" id="headerUserName">Loading...</div>
+            <small class="text-white-50" style="font-size: 11px;">
+              สิทธิ์: <span id="headerUserRole" class="text-warning text-uppercase">-</span>
+            </small>
+          </div>
+        </div>
+        <button id="btnLogout" class="btn btn-outline-light btn-sm" title="ออกจากระบบ">
+          <i class="bi bi-box-arrow-right"></i> ออก
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- พื้นที่หลัก: บันทึกเวลาทำงานรายวัน -->
+  <div class="container-fluid px-4 pb-5" id="attendanceSection">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+        <i class="bi bi-clock-history me-2"></i>บันทึกเวลาทำงานรายวัน
+      </h3>
+      <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
+        <i class="bi bi-house-door"></i> กลับหน้าหลัก
+      </button>
+    </div>
+
+    <!-- แผงควบคุมและตัวกรอง -->
+    <div class="row g-2 mb-4 p-3 bg-white rounded shadow-sm border-start border-5 border-warning">
+      <div class="col-md-3">
+        <label class="small fw-bold">วันที่ปฏิบัติงาน</label>
+        <input type="date" id="attDate" class="form-control" onchange="renderAttendanceGrid()">
+      </div>
+
+      <div class="col-md-3">
+        <label class="small fw-bold">เลือกสาขา/ร้านหลัก</label>
+        <select id="attWorkplace" class="form-select fw-bold" onchange="filterAttendanceByMainShop()">
+          <option value="ALL">-- แสดงทุกสาขา/ร้าน --</option>
+          <option value="Atom">Atom</option>
+          <option value="Good_Time">Good_Time</option>
+          <option value="Tiger_King_Bar_&_Bistro">Tiger</option>
+          <option value="Paradise">Paradise</option>
+          <option value="Atom_Beach">Atom Beach</option>
+          <option value="ครัวกลาง">ครัวกลาง</option>
+          <option value="Pizza">Pizza</option>
+          <option value="Office">Office</option>
+          <option value="Musician">Musician</option>
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <label class="small fw-bold text-secondary">🔎 พิมพ์กรองค้นหาชื่อในตาราง</label>
+        <input type="text" id="searchAttNameInput" class="form-control" placeholder="พิมพ์ชื่อ หรือชื่อเล่น..." oninput="filterAttNameInTable()">
+      </div>
+
+      <div class="col-md-3">
+        <label class="small fw-bold text-primary">➕ ดึงพนักงานสาขาอื่นมาช่วยงานวันนี้ (ต่อท้ายสุด)</label>
+        <div class="input-group">
+          <input type="text" id="addExtraAttEmpName" class="form-control" placeholder="ระบุชื่อ หรือชื่อเล่นพนักงาน...">
+          <button class="btn btn-primary fw-bold" type="button" onclick="pullEmployeeByNameToAttendanceGrid()">ดึงตัว</button>
+        </div>
+      </div>
+
+      <div class="col-md-7 mt-2">
+        <label class="small fw-bold text-success">📋 เรียกรายชื่อตามกลุ่มพนักงาน (Preset Group)</label>
+        <div class="input-group">
+          <select id="attGroupPreset" class="form-select fw-bold" style="border-color: #28a745;" onchange="onGroupPresetChange()">
+            <option value="ALL">-- แสดงรายชื่อทั้งหมดตามปกติ (ไม่มีกลุ่ม) --</option>
+          </select>
+          <button class="btn btn-success fw-bold" type="button" onclick="saveCurrentLayoutAsGroup()">
+            <i class="bi bi-bookmark-plus-fill"></i> บันทึกจำลำดับกลุ่มนี้
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ตารางลงเวลาทำงาน -->
+    <div class="table-responsive" id="attendanceTableContainer">
+      <button type="button" id="floatingInsertBtn" class="btn btn-primary btn-sm d-none align-items-center justify-content-center" onclick="handleFloatingInsertClick()" title="แทรกพนักงานตรงตำแหน่งนี้">
+        <i class="bi bi-plus"></i>
+      </button>
+      <div id="floatingInsertLine" class="d-none"></div>
+
+      <table class="table table-bordered bg-white small shadow-sm align-middle text-center">
+        <thead class="table-dark text-center">
+          <tr>
+            <th width="5%">ID</th>
+            <th width="12%" class="text-start">ชื่อพนักงาน</th>
+            <th width="6%">ชื่อเล่น</th>
+            <th width="10%" class="text-start">ตำแหน่ง</th>
+            <th width="9%">สถานะเข้างาน</th>
+            <th width="6%">เข้า1 (In1)</th>
+            <th width="6%">ออก1 (Out1)</th>
+            <th width="6%">เข้า2 (In2)</th>
+            <th width="6%">ออก2 (Out2)</th>
+            <th width="5%">OT (ชม.)</th>
+            <th width="11%">หมายเหตุ (Remarks)</th>
+            <th width="12%">สถานที่ทำงานวันนี้</th>
+            <th width="6%">จัดการ</th>
+          </tr>
+
+          <tr class="table-light align-middle">
+            <td colspan="5" class="text-end fw-bold text-secondary small py-2">
+              <i class="bi bi-clock-fill text-primary"></i> ตั้งค่าเวลาด่วนให้พนักงานด้านล่างทั้งหมด:
+            </td>
+            <td class="p-1"><input type="text" id="bulkIn1" class="form-control form-control-sm text-center fw-bold text-primary" value="08:00" onblur="formatTimeInput(this)"></td>
+            <td class="p-1"><input type="text" id="bulkOut1" class="form-control form-control-sm text-center fw-bold text-primary" value="14:00" onblur="formatTimeInput(this)"></td>
+            <td class="p-1"><input type="text" id="bulkIn2" class="form-control form-control-sm text-center fw-bold text-primary" value="18:00" onblur="formatTimeInput(this)"></td>
+            <td class="p-1"><input type="text" id="bulkOut2" class="form-control form-control-sm text-center fw-bold text-primary" value="22:00" onblur="formatTimeInput(this)"></td>
+
+            <td colspan="2" class="p-1">
+              <button type="button" class="btn btn-primary btn-sm fw-bold w-100 py-1 shadow-sm" onclick="applyBulkTimesToGrid()">
+                <i class="bi bi-lightning-charge-fill"></i> ใช้เวลานี้กับทุกคน
+              </button>
+            </td>
+            <td colspan="2"></td>
+          </tr>
+        </thead>
+        <tbody id="attendanceGridBody">
+          <tr><td colspan="13" class="text-center text-muted py-4">กรุณาเลือกวันที่ปฏิบัติงานเพื่อโหลดรายชื่อ</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <button id="btnSaveAttendance" class="btn btn-success w-100 fw-bold py-2 mt-2 d-none shadow-sm" onclick="submitBatchAttendance()">
+      <i class="bi bi-floppy-fill me-1"></i> บันทึกเวลาทำงานทั้งหมดของวันนี้
+    </button>
+  </div>
+
+  <!-- JS Module -->
+  <script type="module" src="js/attendance.js"></script>
+</body>
+</html>
