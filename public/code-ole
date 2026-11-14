@@ -1,0 +1,2935 @@
+const SS = SpreadsheetApp.getActiveSpreadsheet();
+const DB_SHEET = SS.getSheetByName("Database");
+const EXP_SHEET = SS.getSheetByName("Expense Record");
+const CLAM_SHEET = SS.getSheetByName("clam");
+const FOLDER_ID = "1miW7AWtGlhfqkJqxX4msHVdgRxnWQEAt"; 
+const UPLOAD_FOLDER_ID = "1o8tVtXpMd00vHHjnFL8LHkLjbLDxNjuY";
+const SLIP_FOLDER = "1bVBEvU-cSXXsnb7FowLut35zWsBeaZCh";
+const RECEIPT_FOLDER = "1A3c1xKAeySaFSJgdCJrnFkDiTZWPDn0L";
+
+function doGet(e) {
+  // ========================================================================
+  // 🎯 [สวิตช์โหมดทดสอบ - พี่วิชชาปรับตรงนี้ได้เลยครับ]
+  // true  = เปิดโหมด Dev: ทะลุเข้าหน้าแอปตรง ๆ ทันที ไม่ติด LINE Login (เหมาะสำหรับตอนปรับแต่งหน้าบ้าน)
+  // false = เปิดโหมดใช้งานจริง: พนักงานทุกคนต้องล็อกอินผ่าน LINE และเช็คสิทธิ์บนคลาวด์ตามปกติ
+  // ========================================================================
+  const IS_DEV_MODE = false; 
+
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const lineClientId = scriptProperties.getProperty('LINE_CHANNEL_ID');
+  const lineClientSecret = scriptProperties.getProperty('LINE_CHANNEL_SECRET');
+  
+  // 🎯 [คงเดิม]: ดึงค่าคอนฟิก Firebase เว็บตัวเดิมของพี่มาสแตนด์บายไว้
+  const webConfig = scriptProperties.getProperty('FIREBASE_WEB_CONFIG'); 
+  
+  // 🎯 [คงเดิม]: ดึงก้อน FIREBASE_KEY มาแกะแปรสภาพสดส่งหน้าบ้าน
+  let webConfigCalculated = webConfig;
+  if (!webConfigCalculated) {
+    try {
+      const firebaseKeyStr = scriptProperties.getProperty('FIREBASE_KEY');
+      if (firebaseKeyStr) {
+        const firebaseKeyJson = JSON.parse(firebaseKeyStr);
+        const projectId = firebaseKeyJson.project_id;
+        webConfigCalculated = JSON.stringify({
+          projectId: projectId,
+          authDomain: projectId + ".firebaseapp.com",
+          databaseURL: "https://" + projectId + "-default-rtdb.firebaseio.com",
+          storageBucket: projectId + ".appspot.com"
+        });
+      }
+    } catch (errKey) {
+      console.error("❌ เกิดข้อผิดพลาดในการแกะรหัสก้อน FIREBASE_KEY: " + errKey.toString());
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // 🔒 [ช่องทางพิเศษ]: วิ่งตัดจบเข้าหน้าแอปทันทีเมื่อเปิดโหมดทดสอบ (IS_DEV_MODE = true)
+  // ------------------------------------------------------------------------
+  if (IS_DEV_MODE) {
+    const template = HtmlService.createTemplateFromFile('Index');
+    template.firebaseWebConfig = webConfigCalculated; // ส่งก้อนคอนฟิกไปหน้าบ้านปกติ
+    
+    // จำลองข้อมูลสิทธิ์โปรไฟล์ของพี่วิชชา เพื่อให้ระบบหน้าบ้านรันได้ไม่สะดุด
+    template.lineUser = {
+      id: "Ub1c1cb6c91bee88632afa055e2a98fcd", // LINE User ID ของพี่วิชชา
+      name: "Wit_Developer_DevMode",
+      picture: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
+      role: "admin",           // 🟢 เพิ่มสิทธิ์แอดมินจำลอง
+      allowedOptions: ["ALL"]
+    };
+    
+    return template.evaluate()
+        .setTitle("🔒 [DEV MODE] Atom Group Phi Phi - Expense System")
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
+  // 🎯 [คงเดิม]: ลิงก์ใช้งานจริงของพี่ ห้ามมีจุดไข่ปลาค้างเด็ดขาด
+  const webAppUrl = "https://script.google.com/macros/s/AKfycbzDPy8dCFpBw8Fk8Haz8ELf-YfYwj4WykcoxgiBiGSAtrg9lPbe_jGFY0i4KJTBp3kU/exec";  
+
+  // ------------------------------------------------------------------------
+  // 🔄 เคสที่ 1: LINE ตรวจสอบเสร็จแล้ว และส่งข้อมูลโค้ดกลับมาที่เว็บแอป (?code=...)
+  // ------------------------------------------------------------------------
+  if (e && e.parameter && e.parameter.code) {
+    try {
+      const code = e.parameter.code;
+      
+      // 🚀 สเต็ป ก: ยิงรหัสแลก Token จากระบบ LINE [คงเดิมครบถ้วน]
+      const tokenUrl = "https://api.line.me/oauth2/v2.1/token";
+      const tokenOptions = {
+        method: "post",
+        contentType: "application/x-www-form-urlencoded",
+        payload: {
+          grant_type: "authorization_code",
+          code: code,
+          redirect_uri: webAppUrl,
+          client_id: lineClientId,
+          client_secret: lineClientSecret
+        },
+        muteHttpExceptions: true
+      };
+      
+      const tokenResponse = UrlFetchApp.fetch(tokenUrl, tokenOptions);
+      const tokenData = JSON.parse(tokenResponse.getContentText());
+      
+      if (!tokenData.access_token) throw new Error("ไม่สามารถแลกสิทธิ์ Token จาก LINE ได้");
+
+      // 🚀 สเต็ป ข: นำ Token ไปเปิดอ่านข้อมูลโปรไฟล์ (ID, ชื่อ, รูป) [คงเดิมครบถ้วน]
+      const profileUrl = "https://api.line.me/v2/profile";
+      const profileOptions = {
+        method: "get",
+        headers: { Authorization: "Bearer " + tokenData.access_token },
+        muteHttpExceptions: true
+      };
+      
+      const profileResponse = UrlFetchApp.fetch(profileUrl, profileOptions);
+      const profileData = JSON.parse(profileResponse.getContentText());
+      
+      const lineUserId = profileData.userId;
+      const lineDisplayName = profileData.displayName;
+      const linePictureUrl = profileData.pictureUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+
+      // 🛑 [ปรับปรุงการรับค่าสิทธิ์]: เรียกใช้ฟังก์ชันเดิม แต่เก็บก้อน Object สิทธิ์ไว้ใช้งาน
+      const userAccess = isLineIdAllowed(lineUserId);
+
+      if (!userAccess) {
+        let noAuthHtml = `
+          <div style="font-family:sans-serif; text-align:center; padding:50px; background:#fdfdfd;">
+            <img src="${linePictureUrl}" style="width:100px; height:100px; border-radius:50%; border:3px solid #dc3545; box-shadow: 0 4px 6px rgba(0,0,0,0.1);"><br><br>
+            <h2 style="color:#dc3545; margin-bottom:5px;">❌ ไม่สามารถเข้าใช้งานระบบได้</h2>
+            <p style="color:#6c757d; margin-top:0;">บัญชี LINE: <b>${lineDisplayName}</b> ยังไม่ได้รับอนุมัติสิทธิ์ หรือสถานะไม่เป็น Active</p>
+            <div style="background:#f8d7da; color:#721c24; padding:18px; display:inline-block; border-radius:6px; margin-top:15px; border:1px solid #f5c6cb; text-align:left;">
+              <b>📌 โปรดคัดลอก LINE ID ด้านล่างนี้ ส่งให้คุณใหม่เพื่อเปิดระบบ:</b><br>
+              <span style="font-family:monospace; font-size:15px; user-select:all; background:#fff; padding:4px 8px; display:block; margin-top:8px; border-radius:4px; border:1px solid #ced4da; font-weight:bold;">${lineUserId}</span>
+            </div>
+          </div>
+        `;
+        return HtmlService.createHtmlOutput(noAuthHtml).setTitle("ไม่มีสิทธิ์เข้าใช้งาน");
+      }
+
+      // 🟩 สเต็ป ง: ผ่านสิทธิ์ฉลุย! วาดหน้าแอปพร้อมประกบคอนฟิกเก่า + ข้อมูล LINE + สิทธิ์ส่งให้หน้าบ้าน
+      const template = HtmlService.createTemplateFromFile('Index');
+      
+      template.firebaseWebConfig = webConfigCalculated; 
+      template.lineUser = {
+        id: lineUserId,
+        name: lineDisplayName,
+        picture: linePictureUrl,
+        role: userAccess.role,                     // 🎯 ส่งข้อมูล Role ไปหน้าบ้าน
+        allowedOptions: userAccess.allowedOptions  // 🎯 ส่งอาร์เรย์รายการที่เลือกได้ไปหน้าบ้าน
+      };
+      
+      // 📝 บันทึกประวัติการล็อกอินลงคลาวด์คลังฐานข้อมูล Firestore [คงเดิม]
+      const userLogInfo = { id: lineUserId, name: lineDisplayName, picture: linePictureUrl };
+      insertAuditLog("LOGIN", `พนักงานเข้าสู่ระบบสำเร็จผ่าน LINE (Role: ${userAccess.role})`, userLogInfo);
+      
+      return template.evaluate()
+        .setTitle("Atom Group Phi Phi - Expense System")
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); 
+
+    } catch (err) {
+      return HtmlService.createHtmlOutput("<h2>เกิดข้อผิดพลาดในการตรวจสอบสิทธิ์ LINE: " + err.toString() + "</h2>");
+    }
+  }
+
+  // ------------------------------------------------------------------------
+  // 🔄 เคสที่ 2: เปิดเว็บขึ้นมาครั้งแรกดิบ ๆ -> สั่งแสดงหน้าจอการ์ดปุ่มกดเพื่อความปลอดภัยสากล
+  // ------------------------------------------------------------------------
+  const lineAuthorizeUrl = "https://access.line.me/oauth2/v2.1/authorize" +
+    "?response_type=code" +
+    "&client_id=" + lineClientId +
+    "&redirect_uri=" + encodeURIComponent(webAppUrl) + 
+    "&state=" + Utilities.getUuid() + 
+    "&scope=profile%20openid";
+
+  let loginPageHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>เข้าสู่ระบบ - Atom Group Phi Phi</title>
+      <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f6f9; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-card { background: white; padding: 40px 30px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.08); text-align: center; max-width: 400px; width: 90%; }
+        .logo { font-size: 22px; font-weight: bold; color: #212529; margin-bottom: 10px; }
+        .subtitle { color: #6c757d; font-size: 14px; margin-bottom: 30px; line-height: 1.5; }
+        .line-btn { background-color: #06C755; color: white; text-decoration: none; font-size: 16px; font-weight: bold; padding: 14px 0; border-radius: 8px; display: block; width: 100%; box-shadow: 0 4px 12px rgba(6,199,85,0.3); transition: all 0.2s ease; }
+        .line-btn:hover { background-color: #05b34c; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(6,199,85,0.4); }
+      </style>
+    </head>
+    <body>
+      <div class="login-card">
+        <div class="logo">🔒 ระบบหลังบ้าน Atom Group Phi Phi</div>
+        <div class="subtitle">เพื่อความปลอดภัยของข้อมูลภายใน<br>กรุณาคลิกปุ่มด้านล่างเพื่อยืนยันตัวตนผ่าน LINE</div>
+        <a href="${lineAuthorizeUrl}" target="_top" class="line-btn">
+          🟢 เข้าสู่ระบบด้วย LINE
+        </a>
+      </div>
+    </body>
+    </html>
+  `;
+
+  return HtmlService.createHtmlOutput(loginPageHtml)
+    .setTitle("เข้าสู่ระบบ - Atom Group Phi Phi")
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL); 
+}
+
+function isLineIdAllowed(lineUserId) {
+  try {
+    const userData = callFirestore("GET", "users/" + lineUserId);
+    
+    if (!userData || userData.error) {
+      console.warn("⚠️ ตรวจพบบัฟเฟอร์เออเร่อหรือไม่มีไอดีพนักงานบนระบบคลาวด์");
+      return null;
+    }
+    
+    // แกะรหัสตรวจสอบโครงสร้างข้อมูลของ Firestore REST API ตรงสาย
+    if (userData.fields && userData.fields.status) {
+      const status = userData.fields.status.stringValue;
+      
+      // ถ้าพนักงานมีสถานะใช้งานอยู่ (active) ให้ทำการแกะ Role และสิทธิ์การเลือกส่งกลับไป
+      if (status === "active") {
+        // ดึงฟิลด์ role (ถ้าไม่มีในฐานข้อมูลจะตั้งค่าเริ่มต้นเป็น "staff")
+        const role = (userData.fields.role && userData.fields.role.stringValue) || "staff";
+        
+        // ดึงฟิลด์ allowedOptions เช่น "Option_A,Option_B" (ถ้าไม่มีจะตั้งเป็นค่าว่าง)
+        const allowedOptionsStr = (userData.fields.allowedOptions && userData.fields.allowedOptions.stringValue) || "";
+        
+        return {
+          role: role,
+          // ตัดแบ่งข้อความคั่นด้วยจุลภาค (,) แปลงเป็น Array เพื่อให้หน้าบ้านเอาไปใช้ลูปจัดการ UI ได้สะดวกครับ
+          allowedOptions: allowedOptionsStr ? allowedOptionsStr.split(",").map(item => item.trim()) : []
+        };
+      }
+    }
+    
+    return null;
+  } catch (e) {
+    console.error("❌ เกิดข้อผิดพลาดในขั้นตอนสแกนสิทธิ์สัญญาน: " + e.toString());
+    return null;
+  }
+}
+
+function testLogin() {
+  const result = isLineIdAllowed("Uffc399cd0b9d9b9874fbf80d10221a69");
+  console.log("ผลลัพธ์การทดสอบ:", result);
+}
+
+function insertAuditLog(actionType, detailsTxt, lineUserObj) {
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+    
+    const logData = {
+      timestamp: new Date().toISOString(),
+      action: actionType,       
+      details: detailsTxt,      
+      user_id: lineUserObj ? lineUserObj.id : "System",
+      user_name: lineUserObj ? lineUserObj.name : "Unknown",
+      user_picture: lineUserObj ? lineUserObj.picture : ""
+    };
+
+    const logDocId = `LOG_${Date.now()}_${Utilities.getUuid().substring(0,8)}`;
+    const path = `audit_logs/${encodeURIComponent(logDocId)}`; // ปรับแก้เส้นทางสากลเป็น audit_logs เพื่อให้จัดเรียงง่ายขึ้นครับพี่
+    callFirestore("PATCH", path, toFirestoreFields(logData));
+    
+    console.log(`✅ บันทึก Log สำเร็จ: [${actionType}] - ${detailsTxt}`);
+  } catch (e) {
+    console.error("❌ บันทึก Audit Log ล้มเหลว: " + e.toString());
+  }
+}
+
+function getUnifiedShopName(rawShop) {
+  if (!rawShop) return "Unknown";
+  
+  // ล้างค่าตัวอักษรพิเศษ เว้นวรรค แดช และขีดล่างให้เหลือแค่ข้อความดิบตัวเล็กเพื่อใช้หาคู่แมป
+  const lookupKey = rawShop.toString().toLowerCase().replace(/[\s_\-]+/g, '').trim();
+  
+  const shopMap = {
+    'atom':                 'Atom',        
+    'atombeach':            'Atom_Beach',  
+    'goodtime':             'Good_Time',   
+    'paradise':             'Paradise',    
+    'tiger':                'Tiger_King_Bar_&_Bistro',
+    'tigerking':            'Tiger_King_Bar_&_Bistro', 
+    'tigerkingbarbistro':   'Tiger_King_Bar_&_Bistro',
+    'tigerkingbar&bistro':  'Tiger_King_Bar_&_Bistro',
+    'office':               'Office',
+    'ส่วนกลาง':              'Office',
+    'kitchen':              'ครัวกลาง',
+    'mainkitchen':          'ครัวกลาง',
+    'ครัวกลาง':              'ครัวกลาง'
+  };
+  
+  return shopMap[lookupKey] || rawShop.trim();
+}
+
+/** 🔗 กลุ่มฟังก์ชันผู้ช่วย (Wrappers) ซิงค์สิทธิ์เข้าหาฟังก์ชันกลาง */
+function standardizeShopNameForUpdate(rawShop) { return getUnifiedShopName(rawShop); }
+function standardizeShopNameForSlip(shopTxt) { return getUnifiedShopName(shopTxt); }
+function getStandardShopName(rawName) { return getUnifiedShopName(rawName); }
+function formatShopToIncomeStyle(name) { return getUnifiedShopName(name); }
+
+/**
+ * expenseEntry
+ */
+function getDropdownData() {
+  try {
+    // 1. ดึงประเภทค่าใช้จ่ายจาก Collection "list" (ตามรูป image_224600.png)
+    const resList = callFirestore("GET", "list");
+    const items = resList.documents 
+      ? resList.documents.map(doc => {
+          const path = doc.name.split('/');
+          return path[path.length - 1]; // ดึงชื่อ Document ID เช่น ค่า mixer, ค่าขนส่ง
+        }) 
+      : [];
+
+    // 2. ดึงข้อมูลร้านค้าจาก Collection "shop" (ตามรูป image_2298b7.png)
+    const resShops = callFirestore("GET", "shop");
+    const shops = resShops.documents 
+      ? resShops.documents.map(doc => {
+          const path = doc.name.split('/');
+          return path[path.length - 1]; // เช่น Atom, Good_Time
+        }) 
+      : [];
+
+    // 3. ดึงข้อมูลผู้ขายจาก Collection "supplier" (ตามรูป image_229897.png)
+    const resSuppliers = callFirestore("GET", "supplier?pageSize=300");
+    const suppliers = resSuppliers.documents 
+      ? resSuppliers.documents.map(doc => {
+          const path = doc.name.split('/');
+          return path[path.length - 1]; // เช่น Advice, Bird Seafood
+        }) 
+      : [];
+
+    return {
+      items: items.sort(),
+      shops: shops.sort(),
+      suppliers: suppliers.sort()
+    };
+  } catch (e) {
+    console.error("Error in getDropdownData: " + e.toString());
+    return { items: [], suppliers: [], shops: [] };
+  }
+}
+
+function addNewOption(type, value, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  try {
+    let docId = value.trim();
+    if (!docId) return getDropdownData();
+
+    if (type === 'item') {
+      // เพิ่มลงใน Collection "list"
+      const payload = {
+        fields: {
+          name: { stringValue: docId }
+        }
+      };
+      callFirestore("PATCH", `list/${encodeURIComponent(docId)}`, payload);
+
+    } else if (type === 'shop') {
+      // 🎯 2. ซิงค์ชื่อร้านค้าใหม่ให้เข้าสู่ระบบมาตรฐานขีดล่างสากลของพี่วิชชาก่อนบันทึก
+      docId = getUnifiedShopName(docId);
+      
+      // เพิ่มลงใน Collection "shop"
+      const payload = {
+        fields: {
+          name: { stringValue: docId },
+          address: { stringValue: "-" },
+          tax_id: { stringValue: "-" },
+          logo: { stringValue: "" }
+        }
+      };
+      callFirestore("PATCH", `shop/${encodeURIComponent(docId)}`, payload);
+
+    } else if (type === 'supplier') {
+      // เพิ่มลงใน Collection "supplier"
+      const payload = {
+        fields: {
+          supplier: { stringValue: docId },
+          name: { stringValue: docId },
+          address: { stringValue: "-" },
+          bank_id: { stringValue: "-" },
+          tax_id: { stringValue: "-" },
+          note: { stringValue: "done" }
+        }
+      };
+      callFirestore("PATCH", `supplier/${encodeURIComponent(docId)}`, payload);
+    }
+    
+    // 🎯 3. ส่งก้อนข้อมูลผู้ใช้งาน (userObj) จากหน้าบ้านเข้าไปแทนที่ค่า null เดิม เพื่อระบุตัวตนคนกดจริง
+    insertAuditLog("NEW_OPTION", `เพิ่ม ${type} ใหม่ชื่อ: ${docId}`, userObj);
+
+    // หลังจากบันทึกเสร็จ ให้ดึงข้อมูลใหม่ทั้งหมดส่งกลับไปที่หน้าเว็บ
+    return getDropdownData();
+
+  } catch (e) {
+    console.error("Error in addNewOption: " + e.toString());
+    throw new Error("ไม่สามารถเพิ่มข้อมูลใหม่ได้: " + e.message);
+  }
+}
+
+function uploadSingleFile(base64Data, mimeType, firebasePath) {
+  console.log("--- [START] เริ่มกระบวนการ uploadSingleFile ตรงเข้า Firebase Storage ---");
+  console.log("พิกัดไฟล์ปลายทาง: " + firebasePath + " | MimeType: " + mimeType);
+  
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+    
+    if (!keyFileRaw) {
+      throw new Error("ไม่พบคีย์ FIREBASE_KEY ในระบบ Script Properties");
+    }
+
+    const keyFile = JSON.parse(keyFileRaw);
+    const projectId = keyFile.project_id; // คงไว้ตามโครงสร้างเดิมของพี่วิชชา
+    const token = getAccessToken(keyFile); 
+    
+    const bucketName = "atom-group-phi-phi.firebasestorage.app";
+
+    const bytes = Utilities.base64Decode(base64Data);
+    console.log("Decode Base64 สำเร็จ เตรียมยิงไฟล์ขนาด: " + bytes.length + " bytes");
+
+    // ดึงชื่อไฟล์จากปลายทางเพื่อนำมาสร้างเป็นก้อน Blob ที่สมบูรณ์ ป้องกันไฟล์พัง
+    const fileName = firebasePath.split('/').pop();
+    const blob = Utilities.newBlob(bytes, mimeType, fileName);
+
+    // 4. สั่งยิงอัปโหลดเนื้อไฟล์ Blob ขึ้นคลาวด์ Firebase Storage ผ่าน REST API
+    const uploadUrl = "https://firebasestorage.googleapis.com/v0/b/" + bucketName + "/o?uploadType=media&name=" + encodeURIComponent(firebasePath);
+    const uploadOptions = {
+      method: "POST", // ปรับเป็นตัวพิมพ์ใหญ่ตามมาตรฐานสากล
+      contentType: mimeType,
+      payload: blob, 
+      headers: { Authorization: "Bearer " + token },
+      muteHttpExceptions: true
+    };
+    
+    const uploadResponse = UrlFetchApp.fetch(uploadUrl, uploadOptions);
+    const uploadCode = uploadResponse.getResponseCode();
+    
+    if (uploadCode !== 200) {
+      throw new Error("Firebase Storage Upload API ตอบกลับล้มเหลว: " + uploadResponse.getContentText());
+    }
+    console.log("✅ สตรีมเนื้อไฟล์ขึ้นคลาวด์ Firebase สำเร็จ");
+
+    // 🎯 [จุดแก้ไขวิกฤต]: แกะเอาค่า downloadTokens แท้ ๆ ที่ Firebase ส่งกลับคืนมาให้ใช้งาน
+    const responseData = JSON.parse(uploadResponse.getContentText());
+    const liveDownloadToken = responseData.downloadTokens;
+
+    if (!liveDownloadToken) {
+      throw new Error("ระบบคลาวด์ไม่ได้ส่งรหัสสิทธิ์ (Download Token) กลับคืนมา");
+    }
+
+    // 6. ประกอบร่างฟอร์แมตลิงก์พรีวิวสาธารณะโดยใช้ Token แท้ ส่งกลับไปเซฟลง Firestore
+    const firebaseDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/" + bucketName + "/o/" + encodeURIComponent(firebasePath) + "?alt=media&token=" + liveDownloadToken;
+    console.log("--- [FINISH] ได้รับลิงก์คลังรูปภาพตัวใหม่พร้อมใช้งาน: " + firebaseDownloadUrl);
+
+    return firebaseDownloadUrl;
+
+  } catch (e) {
+    console.error("เกิดข้อผิดพลาดรุนแรงที่ uploadSingleFile: " + e.toString());
+    throw new Error("Firebase Storage Upload Error: " + e.message);
+  }
+}
+
+function saveInvoiceBulk(allData, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าจากหน้าเว็บหน้าบ้าน
+  console.log("--- [START] เริ่มต้นฟังก์ชัน saveInvoiceBulk ---");
+  const lock = LockService.getScriptLock();
+  
+  try {
+    console.log("กำลังรอ Lock (30 วินาที)...");
+    lock.waitLock(30000); 
+    console.log("ได้รับ Lock แล้ว");
+
+    if (!allData || allData.length === 0) {
+      console.error("Error: ไม่มีข้อมูลส่งมาจากหน้าเว็บ");
+      return "error: ไม่มีข้อมูลส่งมา";
+    }
+
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+    if (!keyFileRaw) throw new Error("ไม่พบ FIREBASE_KEY ในระบบ");
+
+    const keyFile = JSON.parse(keyFileRaw);
+    const projectId = keyFile.project_id; 
+    const writes = []; 
+
+    const cleanNum = (val) => {
+      if (!val) return 0;
+      let n = typeof val === 'string' ? parseFloat(val.replace(/,/g, '')) : val;
+      return isNaN(n) ? 0 : n;
+    };
+
+    const safeId = (txt) => String(txt).replace(/\s+/g, '_').replace(/\//g, '-');
+
+    allData.forEach((data, index) => {
+      const rawDate = data.doc_date || data.docDate || ""; 
+      
+      // 🎯 แปลงชื่อร้านให้ผ่านเกณฑ์มาตรฐานกลางก่อนประกอบโครงสร้าง ID
+      const shopName = getUnifiedShopName(data.shop);
+      const supplierName = (data.supplier || "Unknown").trim();
+      const netAmount = cleanNum(data.net_amount || data.netAmount);
+      const invoiceNo = (data.doc_no || data.docNo || "").trim(); 
+
+      let formattedDate = "0000-00-00";
+      if (rawDate) {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) formattedDate = d.toISOString().split('T')[0]; 
+      }
+
+      const firestorePayload = {
+        doc_no:       "", 
+        invoice_no:   invoiceNo,
+        doc_date:     formattedDate, 
+        list:         data.list || data.itemType || "", 
+        supplier:     data.supplier || "Unknown",
+        shop:         shopName, // บันทึกชื่อร้านแบบมีขีดล่างมาตรฐานลงฟิลด์ข้อมูล
+        net_amount:   netAmount,
+        total_amount: netAmount,
+        non_vat:      cleanNum(data.non_vat || data.exemptAmount),
+        ex_vat:       cleanNum(data.ex_vat || data.basePrice),
+        vat:          cleanNum(data.vat || data.vatValue),
+        url:          data.url || "",
+        status:       "done",
+        clam_sub:     "false",
+        paid:         "false",
+        timestamp:    new Date().toISOString()
+      };
+
+      const docId = `${formattedDate}_${safeId(shopName)}_${safeId(supplierName)}_${netAmount.toFixed(2)}`;
+      const fieldNames = Object.keys(firestorePayload);
+
+      writes.push({
+        update: {
+          name: `projects/${projectId}/databases/(default)/documents/expense/${docId}`,
+          fields: toFirestoreFields(firestorePayload).fields
+        },
+        updateMask: { fieldPaths: fieldNames }
+      });
+    });
+
+    if (writes.length > 0) {
+      const response = commitBatchToFirestore(writes, projectId);
+      if (response.getResponseCode() !== 200) throw new Error("Firebase Error: " + response.getContentText());
+    }
+
+    const totalAmt = allData.reduce((sum, item) => sum + cleanNum(item.net_amount), 0);
+    const shopName = allData.length > 0 ? getUnifiedShopName(allData[0].shop) : "Unknown";
+    
+    // 🎯 2. เปลี่ยนส่งพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อพนักงานคนกดจริง
+    insertAuditLog("BULK_SAVE", `บันทึกบิลชุดใหม่ (${allData.length} รายการ) ร้าน ${shopName} ยอดรวม ${totalAmt.toFixed(2)} บาท`, userObj);
+
+    return "success";
+  } catch (e) {
+    return "error: " + (e.message || e.toString());
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** * ฟังก์ชันส่ง Batch บันทึก */
+function commitBatchToFirestore(writes, projectId) {
+  const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents:commit`;
+  
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const token = getAccessToken(keyFile);
+
+  const options = {
+    method: "post",
+    contentType: "application/json",
+    payload: JSON.stringify({ writes: writes }),
+    headers: { Authorization: "Bearer " + token },
+    muteHttpExceptions: true 
+  };
+  return UrlFetchApp.fetch(url, options);
+}
+
+function getPendingClaims() {
+  const queryPayload = {
+    "structuredQuery": {
+      "from": [{ "collectionId": "expense" }],
+      "where": {
+        "fieldFilter": {
+          "field": { "fieldPath": "doc_no" },
+          "op": "EQUAL",
+          "value": { "stringValue": "" }
+        }
+      },
+      "orderBy": [
+        {
+          "field": { "fieldPath": "doc_date" },
+          "direction": "DESCENDING"
+        }
+      ]
+    }
+  };
+
+  Logger.log("--- เริ่มการดึงข้อมูล Pending Claims ---");
+  Logger.log("Payload ที่ส่งไป: " + JSON.stringify(queryPayload));
+
+  const url = ":runQuery"; 
+  const response = callFirestore("POST", url, queryPayload);
+
+  Logger.log("Response จาก Firestore: " + JSON.stringify(response));
+
+  if (response && response.error) {
+    Logger.log("!!! พบข้อผิดพลาดจาก Firestore: " + response.error.message);
+    return [];
+  }
+
+  if (!response || !Array.isArray(response) || response.length === 0) {
+    Logger.log("ไม่พบรายการที่ตรงตามเงื่อนไข (Empty Result)");
+    return [];
+  }
+
+  const results = response.map((item, index) => {
+    const doc = item.document;
+    if (!doc) return null;
+    
+    try {
+      const f = fromFirestoreFields(doc.fields);
+      const docId = doc.name.split('/').pop();
+      
+      return {
+        docId: docId,
+        supplier: f.supplier || "ไม่ระบุ",
+        amount:   parseFloat(f.net_amount) || 0,
+        date:     f.doc_date ? f.doc_date.split('-').reverse().join('/') : "-",
+        
+        invoice_no: f.invoice_no || "-",
+        doc_date:   f.doc_date || "-",
+        list:       f.list || "-",
+        shop:       f.shop || "-",
+        net_amount: parseFloat(f.net_amount) || 0,
+        
+        doc_no:     f.doc_no || "", 
+        vat:        parseFloat(f.vat) || 0,
+        url:        f.url || "",
+        non_vat:    parseFloat(f.non_vat) || 0,
+        
+        // 🎯 1. ดึงฟิลด์ clam_sub มารองรับการกรองข้อมูล
+        clam_sub:   f.clam_sub || "" 
+      };
+    } catch (err) {
+      Logger.log(`Error ในการ Map รายการที่ ${index}: ` + err.message);
+      return null;
+    }
+  }).filter(item => {
+    // 🎯 2. ตัวกรองขั้นเด็ดขาด (Post-Filter Step)
+    if (item === null) return false;
+
+    // ❌ ถ้า clam_sub เป็น "true" (String) หรือ true (Boolean) แปลว่าตั้งเบิกแล้ว ให้กรองทิ้งทันที!
+    if (item.clam_sub === "true" || item.clam_sub === true) {
+      return false;
+    }
+
+    return true; // ยอมให้เฉพาะบิลที่ยังไม่เคยตั้งเบิกผ่านหน้าจอไปแสดงผล
+  });
+
+  Logger.log(`สรุป: คัดกรองและดึงข้อมูลสำเร็จคงเหลือ ${results.length} รายการ`);
+  return results;
+}
+
+function getSummaryReport(start, end, store) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const token = getAccessToken(keyFile);
+  const projectId = keyFile.project_id;
+
+  // คลังแมปชื่อร้านจากหน้าบ้านให้ตรงกับ ID โฟลเดอร์ที่จัดเก็บจริงบน Firestore
+  const storeMap = {
+    "Atom": "Atom",
+    "Atom Beach": "Atom_Beach",
+    "Good Time": "Good_Time",
+    "Paradise": "Paradise",
+    "Tiger King Bar & Bistro": "Tiger_King_Bar_&_Bistro"
+  };
+
+  // 🎯 [ข้อดีความเร็ว]: หากเลือกเจาะจงร้าน ระบบจะดึงข้อมูลเฉพาะร้านนั้น ๆ ทันที ช่วยลดอัตราการโอนข้อมูล (Save Quota แบนด์วิดท์)
+  let targetStores = [];
+  if (store === "ทั้งหมด") {
+    targetStores = Object.values(storeMap);
+  } else {
+    const mappedStore = storeMap[store.trim()];
+    targetStores = mappedStore ? [mappedStore] : [store.trim().replace(/\s+/g, '_')];
+  }
+
+  let allDocuments = [];
+
+  try {
+    // วนลูปยิงเก็บเอกสารตามรายชื่อร้านค้าเป้าหมายตรงช่องพิกัดย่อย
+    targetStores.forEach(storeId => {
+      const url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/income/${storeId}/daily_records?pageSize=300`;
+      
+      const options = {
+        method: "GET",
+        headers: { Authorization: "Bearer " + token },
+        muteHttpExceptions: true
+      };
+
+      const response = UrlFetchApp.fetch(url, options);
+      if (response.getResponseCode() === 200) {
+        const json = JSON.parse(response.getContentText());
+        if (json.documents && Array.isArray(json.documents)) {
+          json.documents.forEach(doc => { allDocuments.push(doc); });
+        }
+      }
+    });
+
+    const getV = (field) => {
+      if (!field) return 0;
+      if (field.doubleValue !== undefined) return field.doubleValue;
+      if (field.integerValue !== undefined) return parseInt(field.integerValue);
+      if (field.stringValue !== undefined) return field.stringValue;
+      return 0;
+    };
+
+    // นำก้อนข้อมูลทั้งหมดมาจัดระเบียบโครงสร้าง Hybrid และกรองช่วงเวลาในระดับหน้าบ้าน
+    return allDocuments
+      .map(doc => {
+        const docId = doc.name.split('/').pop(); // ดึงวันที่ (YYYY-MM-DD) จากปลายทางชื่อเอกสาร
+        const storeInDb = doc.name.split('/')[doc.name.split('/').length - 3]; // ดึงชื่อร้านค้าจากลำดับโฟลเดอร์ชั้นนอก
+        const shopDisplay = storeInDb.replace(/_/g, ' '); 
+        const f = doc.fields || {};
+
+        // 🎯 ถอดรหัสโครงสร้างพัสดุข้อมูลตามแบบฉบับ Dashboard ของพี่วิชชาเด่น ๆ 100%
+        let ochaSummary = { Cash: 0, VISA: 0, Mastercard: 0, "Bank Transfer": 0, Other: 0, "Total Amount Collected": 0 };
+        
+        if (f.records && f.records.arrayValue && f.records.arrayValue.values && f.records.arrayValue.values.length > 0) {
+          // 🆕 ยุคบันทึกฟอร์แมตใหม่: ดึงจากโครงสร้าง records array ด้านใน
+          const firstRow = f.records.arrayValue.values[0];
+          if (firstRow.mapValue && firstRow.mapValue.fields) {
+            const rf = firstRow.mapValue.fields;
+            ochaSummary.Cash = getV(rf.Cash);
+            ochaSummary.VISA = getV(rf.VISA);
+            ochaSummary.Mastercard = getV(rf.Mastercard);
+            ochaSummary["Bank Transfer"] = getV(rf["Bank Transfer"]) || getV(rf.BankTransfer);
+            ochaSummary.Other = getV(rf.Other);
+            ochaSummary["Total Amount Collected"] = getV(rf["Total Amount Collected"]) || getV(rf.TotalAmountCollected);
+          }
+        } else {
+          // ⏪ ยุคบันทึกฟอร์แมตเก่า: ดึงจากฟิลด์ดั้งเดิมระดับนอกสุดของเอกสาร
+          ochaSummary.Cash = getV(f.cash);
+          ochaSummary.VISA = getV(f.visa);
+          ochaSummary.Mastercard = getV(f.mastercard);
+          ochaSummary["Bank Transfer"] = getV(f.bank_transfer);
+          ochaSummary.Other = getV(f.other_ocha);
+          ochaSummary["Total Amount Collected"] = getV(f.total_amount);
+        }
+
+        // จับคู่คีย์ข้อมูล (Mapping) สตรีมกลับไปให้ฟังก์ชันหน้าบ้าน renderSummaryTable() เรียกใช้งานตรง ๆ
+        return {
+          date: docId, 
+          store: shopDisplay,
+          cash: ochaSummary.Cash,
+          visa: ochaSummary.VISA,
+          master: ochaSummary.Mastercard,
+          transfer: ochaSummary["Bank Transfer"],
+          other: ochaSummary.Other,
+          total: ochaSummary["Total Amount Collected"]
+        };
+      })
+      .filter(item => {
+        // กรองช่วงวันที่ (HTML Input คืนค่าเป็น YYYY-MM-DD ชนกับค่า docId ได้อย่างแม่นยำร้อยเปอร์เซ็นต์)
+        return item.date >= start && item.date <= end;
+      })
+      // 📈 เรียงลำดับจากวันที่เก่าไปใหม่ เพื่อไม่ให้กราฟเส้นของ Chart.js วาดข้อมูลสลับฝั่งสะดุดตา
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+  } catch (err) {
+    console.error("❌ getSummaryReport Error: " + err.message);
+    return [];
+  }
+}
+
+function formatDateToFirestore(dateStr) {
+  if (!dateStr || !dateStr.includes("-")) return dateStr;
+  const [y, m, d] = dateStr.split("-");
+  return `${d}-${m}-${y}`;
+}
+
+function formatDateKey(date) {
+  // 1. ถ้าค่าที่ส่งมาเป็นค่าว่าง ให้ส่ง String ว่างกลับไปเลย ไม่ต้อง toString() ให้ Error
+  if (!date) return ""; 
+
+  if (date instanceof Date) {
+    // 2. ตรวจสอบว่า Date นั้นถูกต้องหรือไม่ (กันกรณี Invalid Date)
+    if (isNaN(date.getTime())) return "";
+    return Utilities.formatDate(date, "GMT+7", "yyyy-MM-dd");
+  }
+  
+  // 3. ถ้าเป็น String อยู่แล้ว ให้ตัดช่องว่าง (Trim) ออกด้วย เพื่อการเทียบที่แม่นยำ
+  return date.toString().trim();
+}
+
+function updateIncomeRecord(payload, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  try {
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+    const token = getAccessToken(keyFile);
+    const projectId = keyFile.project_id;
+
+    // คลีนชื่อ ID ให้เข้าสู่ระบบขีดล่างมาตรฐานสากล
+    const dateId = payload.date.toString().trim().replace(/\//g, "-");
+    const storeId = payload.store.toString().trim().replace(/\s+/g, '_');
+
+    if (!storeId || !dateId) throw new Error("Missing Store ID or Date ID");
+
+    // โครงสร้างฟิลด์แถวขาว/เหลืองคงเดิมตามที่หน้าบ้านพี่วิชชาส่งมา
+    const fields = {
+      "cash_out": { "doubleValue": Number(payload.cash_out) || 0 },
+      "tip": { "doubleValue": Number(payload.tip) || 0 },
+      "tip_type": { "stringValue": payload.tip_type || "-" },
+      "other_exp": { "doubleValue": Number(payload.other_exp) || 0 },
+      "net_cash": { "doubleValue": Number(payload.net_cash) || 0 },
+      "adj_visa": { "doubleValue": Number(payload.adj_visa) || 0 },
+      "adj_master": { "doubleValue": Number(payload.adj_master) || 0 },
+      "adj_transfer": { "doubleValue": Number(payload.adj_transfer) || 0 },
+      "adj_cash": { "doubleValue": Number(payload.adj_cash) || 0 },
+      "status": { "stringValue": "done" }
+    };
+
+    // คงการใช้หน้ากากล็อกฟิลด์เพื่ออัปเดตเฉพาะค่าแก้ไข ยอด Ocha จากคลาวด์จะไม่หาย
+    const masks = [
+      "cash_out", "tip", "tip_type", "other_exp", "net_cash", 
+      "adj_visa", "adj_master", "adj_transfer", "adj_cash", "status"
+    ];
+    const updateMask = masks.map(m => `updateMask.fieldPaths=${m}`).join('&');
+
+    const firestoreUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/income/${storeId}/daily_records/${dateId}?${updateMask}`;
+    
+    const response = UrlFetchApp.fetch(firestoreUrl, {
+      method: "PATCH",
+      contentType: "application/json",
+      headers: { Authorization: "Bearer " + token },
+      payload: JSON.stringify({ fields: fields }),
+      muteHttpExceptions: true
+    });
+
+    const resCode = response.getResponseCode();
+    if (resCode == 200) {
+      // 🎯 2. เปลี่ยนส่งพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อพนักงานคนกดแก้ไขจริง
+      insertAuditLog("UPDATE_INCOME", `แก้ไขสรุปรายวัน: ${storeId}_${dateId} (ร้าน: ${payload.store})`, userObj);
+      return "success";
+    } else {
+      console.error("Firestore Error: " + response.getContentText());
+      return "Error: " + resCode;
+    }
+
+  } catch (e) {
+    return "error: " + e.toString();
+  }
+}
+
+function addFirebaseUploadToQueue(uploadedFiles, shopName, dateVal) {
+  console.log(`--- [START GS] addFirebaseUploadToQueue ร้าน: ${shopName} | วันที่: ${dateVal} ---`);
+  try {
+    const ssId = "1GwLD4BkMtLwA9enn9xQewAuGIMgiSHQlgWHhign9DO4";
+    const ss = SpreadsheetApp.openById(ssId);
+    const queueSheet = ss.getSheetByName("Queue") || ss.insertSheet("Queue");
+    const newEntries = [];
+    
+    const [y, m, d] = dateVal.split("-");
+    
+    // บังคับแปลงช่องว่างเป็นขีดล่างให้ตรงพิกัดคลาวด์ป้องกันบั๊กสคริปต์แครช
+    const cleanShop = shopName.toString().trim().replace(/\s+/g, '_');
+    const formattedFolder = `${cleanShop}_${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+
+    uploadedFiles.forEach(fileObj => {
+      // 🔒 คงมิติการบันทึกข้อมูลตารางคิว 6 คอลเลกชันเดิมของพี่วิชชาไว้ครบถ้วน
+      newEntries.push([
+        new Date(), "Firebase_Web", fileObj.name, "SAVED", fileObj.url, formattedFolder
+      ]);
+    });
+
+    if (newEntries.length > 0) {
+      queueSheet.getRange(queueSheet.getLastRow() + 1, 1, newEntries.length, 6).setValues(newEntries);
+      SpreadsheetApp.flush();
+      return "success";
+    }
+    return "no_data";
+  } catch (e) {
+    return "error: " + e.toString();
+  }
+}
+
+function getAllIncomeData() {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const token = getAccessToken(keyFile);
+  const projectId = keyFile.project_id;
+
+  const targetStores = ["Atom", "Atom_Beach", "Good_Time", "Paradise", "Tiger_King_Bar_&_Bistro"];
+  let allDocuments = [];
+
+  try {
+    targetStores.forEach(storeId => {
+      const encodedStoreId = encodeURIComponent(storeId);
+      let pageToken = "";
+
+      // 🟢 เพิ่ม Loop pageToken เพื่อดึงข้อมูลเกิน 300 รายการจนครบทั้งหมด
+      do {
+        let url = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/income/${encodedStoreId}/daily_records?pageSize=300`;
+        if (pageToken) url += `&pageToken=${pageToken}`;
+        
+        const options = {
+          method: "GET",
+          headers: { Authorization: "Bearer " + token },
+          muteHttpExceptions: true
+        };
+
+        const response = UrlFetchApp.fetch(url, options);
+        if (response.getResponseCode() === 200) {
+          const json = JSON.parse(response.getContentText());
+          if (json.documents && Array.isArray(json.documents)) {
+            allDocuments.push(...json.documents);
+          }
+          pageToken = json.nextPageToken; // ดึง Token หน้าถัดไป
+        } else {
+          pageToken = null;
+        }
+      } while (pageToken);
+    });
+
+    const getV = (field) => {
+      if (!field) return 0;
+      if (field.doubleValue !== undefined) return Number(field.doubleValue);
+      if (field.integerValue !== undefined) return Number(field.integerValue);
+      if (field.stringValue !== undefined) return parseFloat(field.stringValue) || 0;
+      return 0;
+    };
+
+    return allDocuments.map((doc, index) => {
+      const f = doc.fields || {};
+      const docId = doc.name.split('/').pop(); 
+      const pathSegments = doc.name.split('/');
+      const storeInDb = decodeURIComponent(pathSegments[pathSegments.length - 3]); 
+      const shopDisplay = storeInDb.replace(/_/g, ' '); 
+
+      let ochaSummary = { Cash: 0, VISA: 0, Mastercard: 0, "Bank Transfer": 0, Other: 0, "Total Amount Collected": 0 };
+      
+      if (f.records && f.records.arrayValue && f.records.arrayValue.values && f.records.arrayValue.values.length > 0) {
+        const firstRow = f.records.arrayValue.values[0];
+        if (firstRow.mapValue && firstRow.mapValue.fields) {
+          const rf = firstRow.mapValue.fields;
+          ochaSummary.Cash = getV(rf.Cash);
+          ochaSummary.VISA = getV(rf.VISA);
+          ochaSummary.Mastercard = getV(rf.Mastercard);
+          ochaSummary["Bank Transfer"] = getV(rf["Bank Transfer"]) || getV(rf.BankTransfer);
+          ochaSummary.Other = getV(rf.Other);
+          ochaSummary["Total Amount Collected"] = getV(rf["Total Amount Collected"]) || getV(rf.TotalAmountCollected);
+        }
+      } else {
+        ochaSummary.Cash = getV(f.cash);
+        ochaSummary.VISA = getV(f.visa);
+        ochaSummary.Mastercard = getV(f.mastercard);
+        ochaSummary["Bank Transfer"] = getV(f.bank_transfer);
+        ochaSummary.Other = getV(f.other_ocha);
+        ochaSummary["Total Amount Collected"] = getV(f.total_amount);
+      }
+
+      return {
+        docId: docId, 
+        row: index + 2,
+        dateRaw: docId, 
+        dateShow: docId,          
+        shop: shopDisplay,
+        cash: ochaSummary.Cash,
+        visa: ochaSummary.VISA,
+        mastercard: ochaSummary.Mastercard,      
+        bank_transfer: ochaSummary["Bank Transfer"], 
+        other_ocha: ochaSummary.Other,      
+        total_amount: ochaSummary["Total Amount Collected"],  
+        cash_out: getV(f.cash_out),
+        tip: getV(f.tip),
+        tip_type: (f.tip_type && f.tip_type.stringValue) ? f.tip_type.stringValue : "-",
+        other_exp: getV(f.other_exp),
+        net_cash: getV(f.net_cash),          
+        status: (f.status && f.status.stringValue) ? f.status.stringValue : "",
+        adj_visa: getV(f.adj_visa),
+        adj_master: getV(f.adj_master),
+        adj_transfer: getV(f.adj_transfer),
+        adj_cash: getV(f.adj_cash),
+        totalIncome: getV(f.net_cash),
+        totalL: ochaSummary["Total Amount Collected"]
+      };
+    }).sort((a, b) => b.dateRaw.localeCompare(a.dateRaw));
+
+  } catch (err) {
+    Logger.log("❌ Dashboard Fetch Error: " + err.message);
+    return [];
+  }
+}
+
+// ฟังก์ชันสำหรับ "ขอเลข" มาโชว์ในหน้า Preview เฉยๆ (ยังไม่บันทึกอะไรลง Expense)
+function getNextDocNo() {
+  return generateDocNo(); // ส่งแค่เลข EXP-XXXXX กลับไป
+}
+
+function generateDocNo() {
+  const now = new Date();
+  const month = ("0" + (now.getMonth() + 1)).slice(-2);
+  const yearShort = now.getFullYear().toString().slice(-2); 
+  const currentPrefix = "EXP" + month + yearShort; // ผลลัพธ์: EXP0326
+
+  // 1. ดึงข้อมูลจาก Collection 'explog' Document 'expense_doc_no'
+  // หมายเหตุ: ปรับฟังก์ชัน callFirestore ให้รองรับการ GET document ตรงๆ
+  const res = callFirestore("GET", "explog/expense_doc_no");
+  
+  let nextNum = 1;
+  let lastPrefix = "";
+
+  if (res && res.fields) {
+    lastPrefix = res.fields.last_prefix.stringValue;
+    const lastNumber = parseInt(res.fields.last_number.integerValue || res.fields.last_number.stringValue, 10);
+
+    // 2. ตรวจสอบว่ายังเป็นเดือน/ปีเดิมไหม
+    if (lastPrefix === currentPrefix) {
+      // ถ้าเดือนปีเดิม ให้เอาเลขล่าสุด + 1
+      nextNum = lastNumber + 1;
+    } else {
+      // ถ้าขึ้นเดือนใหม่ ให้เริ่มนับที่ 1 ใหม่
+      nextNum = 1;
+    }
+  }
+
+  // 3. เตรียมเลขที่เอกสารใหม่ (เช่น EXP03260001)
+  const newDocNo = currentPrefix + nextNum.toString().padStart(4, '0');
+
+  // 4. บันทึกค่าล่าสุดกลับลงไปใน explog ทันที เพื่อจองเลขไว้
+  const updateData = {
+    fields: {
+      last_number: { integerValue: nextNum },
+      last_prefix: { stringValue: currentPrefix }
+    }
+  };
+  callFirestore("PATCH", "explog/expense_doc_no", updateData);
+
+  return newDocNo;
+}
+
+function confirmAndSaveClaim(selectedItems, finalDocNo, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000);
+    
+    selectedItems.forEach((item, index) => {
+      if (!item.docId) return;
+
+      const updateData = {
+        doc_no:   finalDocNo,
+        clam_sub: "true",
+        status:   "claimed"
+      };
+
+      const fieldsToUpdate = Object.keys(updateData);
+      const updateMaskParams = fieldsToUpdate
+        .map(field => `updateMask.fieldPaths=${field}`)
+        .join('&');
+        
+      const path = `expense/${encodeURIComponent(item.docId)}?${updateMaskParams}`;
+      
+      // เพิ่ม Log เพื่อให้ตรวจสอบใน Executions ได้
+      Logger.log(`กำลังบันทึกรายการที่ ${index + 1}: ${item.docId} ด้วยเลขเอกสาร ${finalDocNo}`);
+      
+      callFirestore("PATCH", path, toFirestoreFields(updateData));
+    });
+
+    // 🎯 2. เปลี่ยนส่งพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อพนักงานคนกดตั้งเบิกจริง
+    insertAuditLog("CLAIM_SAVE", `ตั้งเบิกรายการจำนวน ${selectedItems.length} รายการ เลขเอกสาร: ${finalDocNo}`, userObj);
+
+    return { status: "success" };
+  } catch (e) {
+    Logger.log("Error in confirmAndSaveClaim: " + e.toString());
+    return { status: "error", message: e.toString() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function getSupplierDetails(supplierIdOrName) {
+  const path = `supplier/${encodeURIComponent(supplierIdOrName)}`;
+  try {
+    const json = callFirestore("GET", path);
+    if (!json || !json.fields) return { name: "-", supplier_address: "-", supplier_tax_id: "-", supplier: "-" };
+
+    const f = fromFirestoreFields(json.fields);
+    
+    return {
+      name: f.name || "-",             // ดึงชื่อเต็มมาใส่ Key 'name'
+      supplier_address: f.address || "-", // ดึงที่อยู่มาใส่ Key 'supplier_address'
+      supplier_tax_id: f.tax_id || "-",  // ดึงเลขภาษีมาใส่ Key 'supplier_tax_id'
+      supplier: f.supplier || "-"
+    };
+  } catch (e) {
+    console.error("Error fetching supplier:", e);
+    return { name: "-", supplier_address: "-", supplier_tax_id: "-", supplier: "-" };
+  }
+}
+
+function getAllInvoicesForSearch(mode) {
+  try {
+    // กำหนดสถานะที่จะค้นหา (เริ่มต้นเป็น unpaid ถ้าไม่มีการส่งค่ามา)
+    const currentMode = mode || 'unpaid';
+    console.log("--- [START] ดึงข้อมูลโหมด: " + currentMode + " ---");
+
+    // เตรียมค่าเงื่อนไขสำหรับฟิลด์ 'paid'
+    let paidFilterValues = [];
+    
+    if (currentMode === 'paid') {
+      // เงื่อนไขสำหรับ "จ่ายแล้ว"
+      paidFilterValues = [
+        { "stringValue": "true" },
+        { "booleanValue": true }
+      ];
+    } else {
+      // เงื่อนไขสำหรับ "ค้างจ่าย"
+      paidFilterValues = [
+        { "stringValue": "" },
+        { "stringValue": "false" },
+        { "booleanValue": false }
+      ];
+    }
+
+    const queryPayload = {
+      "structuredQuery": {
+        "from": [{ "collectionId": "expense" }],
+        "where": {
+          "fieldFilter": {
+            "field": { "fieldPath": "paid" },
+            "op": "IN", 
+            "value": {
+              "arrayValue": {
+                "values": paidFilterValues // ใช้ตัวแปรเงื่อนไขที่เลือกไว้ด้านบน
+              }
+            }
+          }
+        },
+        "orderBy": [
+          {
+            "field": { "fieldPath": "doc_date" },
+            "direction": "DESCENDING"
+          }
+        ],
+        "limit": 1000 
+      }
+    };
+
+    // ส่งคำขอไปที่ Firestore
+    const response = callFirestore("POST", ":runQuery", queryPayload);
+
+    // ตรวจสอบ Error
+    if (response.error) {
+      console.error("--- [ERROR] Firestore Query Error ---");
+      console.error("Message: " + response.error.message);
+      return [];
+    }
+
+    if (!response || !Array.isArray(response)) return [];
+
+    const mappedResults = response
+      .filter(item => item.document) 
+      .map(item => {
+        const doc = item.document;
+        const f = fromFirestoreFields(doc.fields);
+        const docId = doc.name.split('/').pop();
+
+        // 🎯 ส่งค่ากลับหน้าบ้านครบถ้วนทุกตัวแปรเดิมของพี่วิชชา และดึงฟิลด์ url, receipt, slip ครบทั้ง 3 ฟิลด์
+        return {
+          docId: docId,
+          no:          f.doc_no || "",
+          dateRaw:     f.doc_date || "",
+          date:        f.doc_date ? f.doc_date.split('-').reverse().join('/') : "", 
+          description: f.list || "",
+          supplier:    f.supplier || "",
+          shop:        f.shop || "",
+          amount:      parseFloat(f.net_amount) || 0,
+          invNo:       f.invoice_no || "",
+          isSet:       (f.clam_sub === "true" || f.clam_sub === true),
+          payChannel:  f.pay_ch || "",
+          payDateRaw:  f.pay_day || "",
+          isPaid:      (f.paid === "true" || f.paid === true), // คืนค่าจริงจากฐานข้อมูล
+          
+          // ผูกส่งข้อมูลออกไปหน้าบ้านพร้อมกันทั้ง 3 ฟิลด์
+          invoiceUrl:  f.url || "",
+          receipt:     f.receipt || "",
+          slip:        f.slip || ""
+        };
+      });
+
+    console.log("--- [FINISH] พบรายการ " + currentMode + " ทั้งหมด " + mappedResults.length + " รายการ ---");
+    return mappedResults;
+
+  } catch (e) {
+    console.error("Error ใน getAllInvoicesForSearch: " + e.toString());
+    return [];
+  }
+}
+
+function updateInvoiceFull(p, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  const lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(30000); 
+    if (!p.docId) throw new Error("ไม่ระบุรหัสเอกสาร (docId)");
+
+    let combinedUrls = "";
+    
+    // -------------------------------------------------------------------------
+    // 🎯 [ท่อที่ 1: โค้ดลูป p.fileData เดิมของพี่วิชชา 100%]
+    // ปรับเพียงดึงค่า Token จาก Response Success เพื่อแก้บั๊กรูปหน้าจอขาว 403 
+    // -------------------------------------------------------------------------
+    if (p.fileData && Array.isArray(p.fileData) && p.fileData.length > 0) {
+      const scriptProperties = PropertiesService.getScriptProperties();
+      const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+      if (!keyFileRaw) throw new Error("ไม่พบคีย์ FIREBASE_KEY ในระบบ Script Properties");
+      
+      const keyFile = JSON.parse(keyFileRaw);
+      const token = getAccessToken(keyFile); 
+      const bucketName = "atom-group-phi-phi.firebasestorage.app";
+      
+      let year = "2026", month = "01", day = "01";
+      if (p.date && p.date.includes("-")) {
+        const dateParts = p.date.split("-");
+        year = dateParts[0] || "2026";
+        month = (dateParts[1] || "01").padStart(2, '0');
+        day = (dateParts[2] || "01").padStart(2, '0');
+      }
+      
+      const shopFolder = getUnifiedShopName(p.shop);
+      const invNo = p.invoice_no ? p.invoice_no.trim() : "NO-IV";
+      const netAmt = parseFloat(p.net_amount) || 0;
+      let urlList = [];
+
+      p.fileData.forEach((f, index) => {
+        const bytes = Utilities.base64Decode(f.base64);
+        const ext = f.fileName.split('.').pop();
+        const finalFileName = `${invNo}_${p.supplier}_${netAmt}_${index + 1}.${ext}`;
+        const firebasePath = `invoice_library/${shopFolder}/${year}/${month}/${day}/${finalFileName}`;
+        const blob = Utilities.newBlob(bytes, f.mimeType, finalFileName);
+        
+        const uploadUrl = "https://firebasestorage.googleapis.com/v0/b/" + bucketName + "/o?uploadType=media&name=" + encodeURIComponent(firebasePath);
+        const uploadOptions = {
+          method: "POST", contentType: f.mimeType, payload: blob, headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true
+        };
+        
+        const uploadResponse = UrlFetchApp.fetch(uploadUrl, uploadOptions);
+        if (uploadResponse.getResponseCode() !== 200) {
+          throw new Error("อัปโหลดไฟล์เข้า Firebase Storage ล้มเหลว: " + uploadResponse.getContentText());
+        }
+
+        // แกะเอาค่า downloadTokens แท้จากเซิร์ฟเวอร์โดยไม่ต้องส่งคำขอ PATCH ไปซ้อน เพื่อความเสถียร
+        const responseData = JSON.parse(uploadResponse.getContentText());
+        const downloadToken = responseData.downloadTokens;
+        
+        urlList.push(`https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(firebasePath)}?alt=media&token=${downloadToken}`);
+      });
+      combinedUrls = urlList.join("\n"); 
+    }
+
+    // -------------------------------------------------------------------------
+    // 🎯 [ท่อที่ 2: เขียนเพิ่มขยาย] รองรับรูปฝั่ง ใบเสร็จ (receipt) เข้าฟิลด์เฉพาะกลุ่ม
+    // -------------------------------------------------------------------------
+    let receiptUrlResult = "";
+    if (p.receiptFileData && p.receiptFileData.base64) {
+      const scriptProperties = PropertiesService.getScriptProperties();
+      const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+      const token = getAccessToken(JSON.parse(keyFileRaw));
+      const bucketName = "atom-group-phi-phi.firebasestorage.app";
+      
+      let year = "2026", month = "01", day = "01";
+      if (p.date && p.date.includes("-")) {
+        const dateParts = p.date.split("-");
+        year = dateParts[0] || "2026";
+        month = (dateParts[1] || "01").padStart(2, '0');
+        day = (dateParts[2] || "01").padStart(2, '0');
+      }
+      const shopFolder = getUnifiedShopName(p.shop);
+      const invNo = p.invoice_no ? p.invoice_no.trim() : "NO-IV";
+      const netAmt = parseFloat(p.net_amount) || 0;
+      
+      const rExt = p.receiptFileData.fileName.split('.').pop();
+      const receiptFileName = `${invNo}_${p.supplier}_${netAmt}_receipt.${rExt}`;
+      const receiptPath = `invoice_library/${shopFolder}/${year}/${month}/${day}/${receiptFileName}`;
+      const rBytes = Utilities.base64Decode(p.receiptFileData.base64);
+      const rBlob = Utilities.newBlob(rBytes, p.receiptFileData.mimeType, receiptFileName);
+      
+      const rUploadUrl = "https://firebasestorage.googleapis.com/v0/b/" + bucketName + "/o?uploadType=media&name=" + encodeURIComponent(receiptPath);
+      const rResponse = UrlFetchApp.fetch(rUploadUrl, {
+        method: "POST", contentType: p.receiptFileData.mimeType, payload: rBlob, headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true
+      });
+      if (rResponse.getResponseCode() !== 200) throw new Error("บันทึกไฟล์ใบเสร็จล้มเหลว");
+      
+      const rToken = JSON.parse(rResponse.getContentText()).downloadTokens;
+      receiptUrlResult = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(receiptPath)}?alt=media&token=${rToken}`;
+    }
+
+    // -------------------------------------------------------------------------
+    // 🎯 [ท่อที่ 3: เขียนเพิ่มขยาย] รองรับรูปฝั่ง สลิปโอนเงิน (slip) เข้าฟิลด์เฉพาะกลุ่ม
+    // -------------------------------------------------------------------------
+    let slipUrlResult = "";
+    if (p.slipFileData && p.slipFileData.base64) {
+      const scriptProperties = PropertiesService.getScriptProperties();
+      const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+      const token = getAccessToken(JSON.parse(keyFileRaw));
+      const bucketName = "atom-group-phi-phi.firebasestorage.app";
+      
+      let year = "2026", month = "01", day = "01";
+      if (p.date && p.date.includes("-")) {
+        const dateParts = p.date.split("-");
+        year = dateParts[0] || "2026";
+        month = (dateParts[1] || "01").padStart(2, '0');
+        day = (dateParts[2] || "01").padStart(2, '0');
+      }
+      const shopFolder = getUnifiedShopName(p.shop);
+      const invNo = p.invoice_no ? p.invoice_no.trim() : "NO-IV";
+      const netAmt = parseFloat(p.net_amount) || 0;
+      
+      const sExt = p.slipFileData.fileName.split('.').pop();
+      const slipFileName = `${invNo}_${p.supplier}_${netAmt}_slip.${sExt}`;
+      const slipPath = `slip_library/${shopFolder}/${year}/${month}/${day}/${slipFileName}`;
+      const sBytes = Utilities.base64Decode(p.slipFileData.base64);
+      const sBlob = Utilities.newBlob(sBytes, p.slipFileData.mimeType, slipFileName);
+      
+      const sUploadUrl = "https://firebasestorage.googleapis.com/v0/b/" + bucketName + "/o?uploadType=media&name=" + encodeURIComponent(slipPath);
+      const sResponse = UrlFetchApp.fetch(sUploadUrl, {
+        method: "POST", contentType: p.slipFileData.mimeType, payload: sBlob, headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true
+      });
+      if (sResponse.getResponseCode() !== 200) throw new Error("บันทึกไฟล์สลิปล้มเหลว");
+      
+      const sToken = JSON.parse(sResponse.getContentText()).downloadTokens;
+      slipUrlResult = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(slipPath)}?alt=media&token=${sToken}`;
+    }
+
+    // -------------------------------------------------------------------------
+    // ประกอบร่างส่งขึ้น Firestore (รวมเขียนสิทธิ์ขนานกันทั้ง 3 ฟิลด์ข้อมูลไฟล์)
+    // -------------------------------------------------------------------------
+    const updateData = {
+      doc_date: p.date, list: p.list, supplier: p.supplier,
+      shop: getUnifiedShopName(p.shop), 
+      net_amount: parseFloat(p.net_amount) || 0, total_amount: parseFloat(p.net_amount) || 0, 
+      invoice_no: p.invoice_no, clam_sub: p.clam_sub, pay_ch: p.pay_ch, pay_day: p.pay_day, paid: p.paid,
+      timestamp_update: new Date().toISOString()
+    };
+
+    if (combinedUrls !== "") updateData.url = combinedUrls;
+    if (receiptUrlResult !== "") updateData.receipt = receiptUrlResult;
+    if (slipUrlResult !== "") updateData.slip = slipUrlResult;
+
+    let mask = Object.keys(updateData).map(key => "updateMask.fieldPaths=" + key).join('&');
+    if (callFirestore("PATCH", "expense/" + encodeURIComponent(p.docId) + "?" + mask, toFirestoreFields(updateData)).error) throw new Error("Firestore Update Error");
+
+    // 🎯 2. เปลี่ยนส่งพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อพนักงานคนแก้ไขบิลจริง
+    if (typeof insertAuditLog === 'function') {
+      insertAuditLog("UPDATE_INVOICE", `แก้ไขข้อมูลบิล: ${p.docId} ร้าน: ${getUnifiedShopName(p.shop)}`, userObj);
+    }
+
+    return "success";
+  } catch (e) {
+    throw new Error("บันทึกไม่สำเร็จ: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/** 1. ฟังก์ชันส่งคืนรายชื่อร้านค้า (ฉบับปรับปรุงการเรียงลำดับ) */
+function getStoresForFilter() {
+  try {
+    const stores = [
+      "Atom",
+      "Atom Beach",
+      "Good Time",
+      "Paradise",
+      "Tiger King Bar & Bistro"
+    ];
+    
+    // ✨ เพิ่มการ Sort เพื่อให้พนักงานเลือกจาก Dropdown ได้ง่ายขึ้น
+    return stores.sort(); 
+    
+  } catch (e) {
+    console.error("getStoresForFilter Error: " + e.toString());
+    return [];
+  }
+}
+
+/** 2. ฟังก์ชันส่งคืนรายชื่อร้านค้า (ฉบับจัดระเบียบ) */
+function getStoresForSummary() {
+  try {
+    const stores = [
+      "Atom", "Atom Beach", "Good Time", "Paradise", "Tiger King",
+      "ครัวกลาง", "ส่วนตัว", "ส่วนกลาง", "Consultant",
+      "ระบุไม่ได้", "ภาษี", "ค่าเช่า", "ค่าแรง", "ชำระเงินกู้", "Pizza"
+    ];
+    
+    // ✨ เพิ่มการเรียงลำดับตัวอักษร ก-ฮ และ A-Z เพื่อให้หาใน Dropdown ง่ายขึ้น
+    return stores.sort(); 
+    
+  } catch (e) {
+    console.error("Error in getStoresForSummary: " + e.message);
+    return [];
+  }
+}
+
+function fetchSummaryDataStandalone(params) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(params.source);
+  if (!sheet) return { total: 0, count: 0, rows: [] };
+
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return { total: 0, count: 0, rows: [] };
+
+  // ✨ แก้ไข: ดึงข้อมูล A ถึง K (11 คอลัมน์) เพื่อให้ครอบคลุมยอดรวมที่คอลัมน์ K
+  const data = sheet.getRange(2, 1, lastRow - 1, 11).getValues();
+  
+  const startDate = new Date(params.dateStart);
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(params.dateEnd);
+  endDate.setHours(23, 59, 59, 999); 
+  
+  const filterStore = params.store.trim().toLowerCase();
+  const isSearchAll = (params.store === "All" || params.store === "ทั้งหมด");
+  
+  let total = 0;
+  let filteredRows = [];
+
+  data.forEach((row) => {
+    const rawDate = row[1]; // คอลัมน์ B (วันที่)
+    if (!(rawDate instanceof Date) && isNaN(new Date(rawDate).getTime())) return;
+    
+    const rowDate = new Date(rawDate);
+    if (rowDate < startDate || rowDate > endDate) return;
+
+    let isMatch = false;
+    let amount = 0;
+    let detail = {};
+
+    // --- 1. กรณีแหล่งข้อมูลคือ Expense Record ---
+    if (params.source === "Expense Record") {
+      amount = parseFloat(String(row[5]).replace(/,/g, '')) || 0; // F (ยอดเงิน)
+      const storeInSheet = String(row[4] || "").trim(); // E (ร้านค้า)
+      const supplier = String(row[3] || "").trim();    // D (Supplier)
+      
+      if (isSearchAll || storeInSheet.toLowerCase() === filterStore) {
+        isMatch = true;
+        detail = { 
+          date: Utilities.formatDate(rowDate, "GMT+7", "dd/MM/yyyy"),
+          info: row[2],      
+          supplier: supplier, 
+          note: storeInSheet,
+          money: amount 
+        };
+      }
+    } 
+    // --- 2. กรณีแหล่งข้อมูลคือ OCR ---
+    else if (params.source === "OCR") {
+      // ✨ แก้ไข: ยอดรวมย้ายไปที่คอลัมน์ K (Index 10)
+      amount = parseFloat(String(row[10]).replace(/,/g, '')) || 0; 
+      
+      const payee    = String(row[3] || "").trim().toLowerCase(); // D
+      const note     = String(row[6] || "").trim().toLowerCase(); // G
+      const shop     = String(row[7] || "").trim();               // H (Shop)
+      
+      // ✨ แก้ไข: หมวดหมู่/ประเภทต้นทุน ย้ายมาที่คอลัมน์ J (Index 9)
+      const category = String(row[9] || "").trim().toLowerCase(); 
+
+      if (isSearchAll || 
+          payee.includes(filterStore) || 
+          note.includes(filterStore) || 
+          shop.toLowerCase().includes(filterStore) ||
+          category === filterStore) {
+        
+        isMatch = true;
+        detail = { 
+          date: Utilities.formatDate(rowDate, "GMT+7", "dd/MM/yyyy"),
+          info: row[3], // D
+          shop: shop,   
+          // แสดงหมวดหมู่จากคอลัมน์ J ใน Note
+          note: (row[9] ? "[" + row[9] + "] " : "") + (row[6] || "") + (shop ? " [" + shop + "]" : ""),
+          money: amount 
+        };
+      }
+    }
+
+    if (isMatch) {
+      total += amount;
+      filteredRows.push(detail);
+    }
+  });
+
+  return {
+    total: total,
+    count: filteredRows.length,
+    rows: filteredRows
+  };
+}
+
+function getCashOutReport(start, end, shopFilter, supplierFilter, categoryFilter) {
+  console.log(`--- [START GS] getCashOutReport (Safe Multi-Path Mode) ---`);
+  console.log(`ช่วง: ${start} ถึง ${end} | ร้าน: ${shopFilter} | คู่ค้า: ${supplierFilter} | ประเภท: ${categoryFilter}`);
+  
+  try {
+    // 1. ดึงรายชื่อร้านค้าให้ตรงตามการสะกดในระบบปัจจุบันของคุณ
+    let shopsToFetch = [];
+    if (!shopFilter || shopFilter === "All") {
+      shopsToFetch = ['Atom', 'Atom_Beach', 'Good_Time', 'Tiger_King_Bar_&_Bistro', 'Paradise'];
+    } else {
+      shopsToFetch = [shopFilter];
+    }
+
+    // 2. แตกช่วงวันที่เลือกจากหน้าบ้าน (start ถึง end) ออกมาเป็น Array ของแต่ละวัน (YYYY-MM-DD)
+    let dateList = [];
+    let currentDate = new Date(start);
+    let endDate = new Date(end);
+    
+    while (currentDate <= endDate) {
+      let yyyy = currentDate.getFullYear();
+      let mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+      let dd = String(currentDate.getDate()).padStart(2, '0');
+      dateList.push(`${yyyy}-${mm}-${dd}`);
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    let reportRows = [];
+    let grandTotal = 0;
+
+    // 3. วนลูปเจาะดึงเอกสารจากห้อง bills ตรงๆ ถอดแบบมาจากฟังก์ชัน getCashoutItems
+    dateList.forEach(dateStr => {
+      shopsToFetch.forEach(shop => {
+        const targetSubCollection = `cashout/${shop}/days/${dateStr}/bills`;
+        
+        try {
+          // เรียกดึงข้อมูลผ่าน GET ธรรมดาแบบที่ระบบเดิมทำอยู่ (ไม่ต้องใช้ Index)
+          const response = callFirestore("GET", targetSubCollection);
+          
+          if (response && response.documents && Array.isArray(response.documents)) {
+            response.documents.forEach(doc => {
+              if (!doc.fields) return;
+              
+              // แปลงฟิลด์ด้วยฟังก์ชันเดิมของระบบคุณ
+              const billFields = fromFirestoreFields(doc.fields) || {};
+              
+              const itemDate = dateStr; // 🎯 ดึงวันที่จากโฟลเดอร์ Path ตรงๆ ปลอดภัยที่สุด ไม่สนข้อความยาวๆ ข้างใน
+              const itemShop = billFields.shop_bill || shop;
+              const itemSupplier = billFields.supplier ? billFields.supplier.toString().trim() : "บิลเงินสด";
+              const itemCategory = billFields.category || "ไม่ระบุประเภท";
+              const itemAmount = parseFloat(billFields.bill_total) || parseFloat(billFields.total_amount) || 0;
+
+              // 🎯 คัดกรองตัวเลือก Supplier และ Category ด้วยสคริปต์หลังบ้าน
+              if (supplierFilter !== "All" && itemSupplier !== supplierFilter.toString().trim()) return;
+              if (categoryFilter !== "All" && itemCategory !== categoryFilter.toString().trim()) return;
+
+              grandTotal += itemAmount;
+              reportRows.push({
+                date: itemDate,
+                shop_bill: itemShop,
+                category: itemCategory,
+                supplier: itemSupplier,
+                bill_total: itemAmount
+              });
+            });
+          }
+        } catch (err) {
+          // ข้ามโฟลเดอร์ที่ไม่มีข้อมูลหรือพิมพ์วันที่ผิดพลาด เพื่อไม่ให้ระบบหยุดทำงาน
+          console.warn(`ไม่พบข้อมูลที่พิกัด ${targetSubCollection}: ` + err.message);
+        }
+      });
+    });
+
+    return {
+      total: grandTotal,
+      rows: reportRows
+    };
+
+  } catch (e) {
+    console.error("เกิดข้อผิดพลาดในการประมวลผลรายงานแบบ Path: " + e.toString());
+    return { total: 0, rows: [] };
+  }
+}
+
+function getFirestoreFiltersSetup() {
+  try {
+    // ดึงเฉพาะโครงสร้างหลัก 300 เอกสารล่าสุดมาสกัดหารายชื่อร้านค้า
+    const response = callFirestore("GET", "cashout?pageSize=300");
+    
+    // ตั้งต้นด้วยข้อมูลมาตรฐานกลุ่มแรกของคุณ
+    let shopSet = new Set(["atom", "atombeach", "goodtime", "paradise", "tigerking"]);
+    
+    if (response && response.documents) {
+      response.documents.forEach(doc => {
+        if (doc.fields && doc.fields.shop_folder) {
+          const folderName = doc.fields.shop_folder.stringValue;
+          if (folderName) {
+            shopSet.add(folderName.toString().trim().toLowerCase());
+          }
+        }
+      });
+    }
+    
+    // แปลงกลับเป็น Array และเรียงลำดับอักษร
+    return Array.from(shopSet).sort();
+    
+  } catch (e) {
+    console.error("Error getFirestoreFiltersSetup: " + e.toString());
+    return ["atom", "atombeach", "goodtime", "paradise", "tigerking"];
+  }
+}
+
+function getAccessToken(key) {
+  // 1. ลองดึง Token จาก Cache ก่อน (จำไว้ได้สูงสุด 6 ชั่วโมงในระบบ Google)
+  // 🎯 ปรับชื่อกุญแจแคชใหม่ เพื่อล้างตราสิทธิ์เก่าที่ไม่มีโควต้า Storage ทิ้งทันทีครับพี่
+  const cache = CacheService.getScriptCache();
+  const cachedToken = cache.get("firebase_master_token"); 
+  
+  if (cachedToken) {
+    return cachedToken; // ถ้ามีของใหม่ที่สิทธิ์ครบและยังไม่หมดอายุ ให้ส่งกลับไปเลย
+  }
+
+  // 2. ถ้าไม่มีใน Cache หรือหมดอายุแล้ว ให้รันโค้ดเพื่อขอใหม่
+  const header = JSON.stringify({ alg: "RS256", typ: "JWT" });
+  const now = Math.floor(Date.now() / 1000);
+  
+  // 🎯 [แก้ไขเสร็จสิ้น]: เติมท่อสิทธิ์ cloud-platform เคาะเว้นวรรคต่อท้ายเข้าไปในระบบเรียบร้อยครับ
+  const claimSet = JSON.stringify({
+    iss: key.client_email,
+    scope: "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/cloud-platform", 
+    aud: "https://oauth2.googleapis.com/token",
+    exp: now + 3600,
+    iat: now
+  });
+
+  const encode = (str) => Utilities.base64EncodeWebSafe(str).replace(/=+$/, "");
+  const signatureInput = encode(header) + "." + encode(claimSet);
+  
+  const privateKey = key.private_key.replace(/\\n/g, '\n');
+  const signature = Utilities.computeRsaSha256Signature(signatureInput, privateKey);
+  const jwt = signatureInput + "." + encode(signature);
+
+  const options = {
+    method: "POST",
+    payload: {
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt
+    },
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch("https://oauth2.googleapis.com/token", options);
+    const data = JSON.parse(response.getContentText());
+    const token = data.access_token;
+
+    if (token) {
+      // 3. บันทึก Token ตัวใหม่สิทธิ์เต็มลงใน Cache (เก็บไว้ 3000 วินาที หรือประมาณ 50 นาที)
+      cache.put("firebase_master_token", token, 3000);
+      return token;
+    } else {
+      throw new Error("ขอ Token ไม่สำเร็จ: " + response.getContentText());
+    }
+  } catch (e) {
+    Logger.log("Error getAccessToken: " + e.message);
+    return null;
+  }
+}
+
+function fromFirestoreFields(fields) {
+  const obj = {};
+  for (const key in fields) {
+    const val = fields[key];
+    if (val.hasOwnProperty('stringValue')) obj[key] = val.stringValue;
+    else if (val.hasOwnProperty('doubleValue')) obj[key] = Number(val.doubleValue);
+    else if (val.hasOwnProperty('integerValue')) obj[key] = Number(val.integerValue);
+    else if (val.hasOwnProperty('booleanValue')) obj[key] = val.booleanValue;
+    else obj[key] = "";
+  }
+  return obj;
+}
+
+/** ดึงข้อมูลทั้งหมดจาก Cloud มาเขียนทับลงใน Sheet (Run ตามรอบหรือตั้ง Trigger) */
+function backupFirestoreToSheets() {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("income");
+  const data = getAllIncomeData(); // ฟังก์ชันดึง 1000 รายการที่เราทำไว้แล้ว
+  
+  if (!data || data.length === 0) return;
+
+  const rows = data.map(i => [
+    i.dateShow, i.shop, i.cash, i.visa, i.master, i.transfer, i.other, 
+    "", "", "", "", i.total,
+    i.cashout, i.tip, i.tipType, i.otherIncome, i.totalIncome,
+    i.adjVisa, i.adjMaster, i.adjTransfer, i.adjCash,
+    i.netVisa, i.netMaster, i.netTransfer, i.netOther, i.netCash, i.grandTotal
+  ]);
+
+  // ล้างข้อมูลเก่า (ยกเว้น Header) และวางข้อมูลใหม่
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, 27).clearContent();
+  }
+  sheet.getRange(2, 1, rows.length, 27).setValues(rows);
+  
+  Logger.log("Backup สำเร็จ: " + rows.length + " รายการ");
+}
+
+function callFirestore(method, path, payload = null) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const token = getAccessToken(keyFile);
+  const projectId = keyFile.project_id;
+  
+  let baseUrl = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
+  
+  // --- ส่วนที่ปรับปรุง: การต่อ URL ให้รองรับทั้ง : (commit), / (path) และ ? (query) ---
+  let finalUrl = baseUrl;
+  if (path) {
+    if (path.startsWith(':') || path.startsWith('?')) {
+      finalUrl += path; // ถ้าเป็น :commit หรือ ?pageSize ให้ต่อท้ายได้เลย
+    } else {
+      finalUrl += '/' + path; // ถ้าเป็นชื่อ collection ให้เติม / คั่นตามปกติ
+    }
+  }
+  // -----------------------------------------------------------------------
+
+  const options = {
+    method: method,
+    headers: { 
+      Authorization: "Bearer " + token,
+      "Content-Type": "application/json"
+    },
+    muteHttpExceptions: true
+  };
+
+  if (payload) options.payload = JSON.stringify(payload);
+
+  const response = UrlFetchApp.fetch(finalUrl, options);
+  const resText = response.getContentText();
+  
+  // --- ส่วนที่เพิ่มความปลอดภัย: เช็คว่าเป็น HTML หรือ JSON ก่อน Parse ---
+  let resJson;
+  try {
+    resJson = JSON.parse(resText);
+  } catch (e) {
+    // ถ้าพังตรงนี้ แสดงว่า Google ส่ง HTML Error มา (เช่น 404 หรือ 400)
+    console.error("❌ ไม่สามารถ Parse JSON ได้! อาจเป็นเพราะ URL ผิดหรือ Token หมดอายุ");
+    console.error("URL ที่เรียกคือ: " + finalUrl);
+    console.error("ข้อความที่ตอบกลับมา (บางส่วน): " + resText.substring(0, 300));
+    return { error: "HTML_RESPONSE_ERROR", details: resText.substring(0, 100) };
+  }
+  
+  if (resJson.error) {
+    console.error("⚠️ Firestore Error: " + JSON.stringify(resJson.error));
+  }
+  
+  return resJson;
+}
+
+function addSupplierToFirestore(data) {
+  try {
+    const docId = data.supplier;
+    // ใช้ PATCH เพื่อ Upsert (ถ้ามีอยู่แล้วจะทับ ถ้าไม่มีจะสร้างใหม่)
+    callFirestore("PATCH", `supplier/${encodeURIComponent(docId)}`, toFirestoreFields(data));
+    return "success";
+  } catch (e) {
+    throw new Error("Add Supplier Error: " + e.message);
+  }
+}
+
+function addListToFirestore(listName) {
+  try {
+    const payload = {
+      name: listName,
+      timestamp: new Date().toISOString()
+    };
+    callFirestore("PATCH", `list/${encodeURIComponent(listName)}`, toFirestoreFields(payload));
+    return "success";
+  } catch (e) {
+    throw new Error("Add List Error: " + e.message);
+  }
+}
+
+function deleteInvoiceFromFirestore(docId, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  try {
+    // 🎯 1. ดึงข้อมูลบิลจาก Firestore ขึ้นมาตรวจสอบก่อน (ถ้าลบเอกสารก่อน จะไม่รู้พิกัดไฟล์ใน Storage)
+    const docRes = callFirestore("GET", `expense/${encodeURIComponent(docId)}`);
+    
+    if (docRes && docRes.fields) {
+      const f = fromFirestoreFields(docRes.fields);
+      const fileUrls = f.url || "";
+      
+      // ตรวจสอบว่าบิลใบนี้มีลิงก์รูปภาพผูกอยู่บน Firebase Storage หรือไม่
+      if (fileUrls && fileUrls !== "-" && fileUrls.includes("firebasestorage.googleapis.com")) {
+        const scriptProperties = PropertiesService.getScriptProperties();
+        const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+        
+        if (keyFileRaw) {
+          const keyFile = JSON.parse(keyFileRaw);
+          const token = getAccessToken(keyFile); // 使用 Token 权限
+          const bucketName = "atom-group-phi-phi.firebasestorage.app";
+          
+          // รองรับกรณีบิลใบนั้นมีหลายรูปภาพ (ที่ถูกคั่นด้วยเครื่องหมายเว้นบรรทัด \n)
+          const urls = fileUrls.split("\n");
+          urls.forEach(url => {
+            const trimmedUrl = url.trim();
+            if (!trimmedUrl) return;
+            
+            // ✂️ แกะเอาพิกัดโฟลเดอร์ลึก (encodedPath) ที่อยู่ระหว่างข้อความ /o/ และเครื่องหมาย ? ออกมา
+            const match = trimmedUrl.match(/\/o\/(.+?)\?/);
+            if (match && match[1]) {
+              const encodedPath = match[1]; // จะได้ค่าเช่น invoice_library%2FAtom%2F...
+              const deleteStorageUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodedPath}`;
+              
+              const deleteOptions = {
+                method: "DELETE",
+                headers: { Authorization: "Bearer " + token },
+                muteHttpExceptions: true
+              };
+              
+              // สั่งยิงคำสั่งระเบิดไฟล์ทิ้งจากคลัง Firebase Storage
+              const deleteResponse = UrlFetchApp.fetch(deleteStorageUrl, deleteOptions);
+              
+              if (deleteResponse.getResponseCode() === 200) {
+                console.log(`✅ ลบไฟล์ในคลัง Storage สำเร็จ: ${decodeURIComponent(encodedPath)}`);
+              } else {
+                // หากไฟล์ไม่มีอยู่จริงหรือเคยโดนลบไปแล้ว ให้บันทึก Log เตือนแต่ไม่สั่งให้โค้ดพัง เพื่อให้ระบบลบข้อความฐานข้อมูลต่อไปได้ครับ
+                console.error(`⚠️ ไม่สามารถลบไฟล์ใน Storage ได้ (หรือไฟล์ไม่มีอยู่แล้ว): ${deleteResponse.getContentText()}`);
+              }
+            }
+          });
+        }
+      }
+    }
+
+    // 🎯 2. [โค้ดเดิมของพี่]: 使用 DELETE คำสั่งลบตัวเอกสารข้อความออกจากตาราง Firestore
+    const res = callFirestore("DELETE", `expense/${encodeURIComponent(docId)}`);
+
+    if (res && res.error) {
+      throw new Error(res.error.message);
+    }
+
+    // 🎯 3. [แก้ไขจุดสำคัญ]: เปลี่ยนส่งพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อพนักงานคนกดสั่งลบจริง
+    insertAuditLog("DELETE_INVOICE", `ลบบิลเลขที่: ${docId}`, userObj);
+
+    return "success";
+  } catch (e) {
+    console.error("Delete Invoice Error: " + e.toString());
+    throw new Error("ไม่สามารถลบข้อมูลได้: " + e.message);
+  }
+}
+
+function getUnpaidExpenses(claimStatus) {
+  const status = claimStatus || 'all';
+
+  const queryPayload = {
+    "structuredQuery": {
+      "from": [{ "collectionId": "expense" }],
+      "where": {
+        "fieldFilter": {
+          "field": { "fieldPath": "paid" },
+          "op": "EQUAL",
+          "value": { "stringValue": "false" } 
+        }
+      },
+      "orderBy": [
+        { "field": { "fieldPath": "doc_date" }, "direction": "DESCENDING" }
+      ]
+    }
+  };
+
+  Logger.log(`--- เริ่มดึงข้อมูลค้างจ่าย (Claim Status Filter: ${status}) ---`);
+  const response = callFirestore("POST", ":runQuery", queryPayload);
+
+  if (response && response.error) {
+    Logger.log("!!! Firestore Error: " + response.error.message);
+    return [];
+  }
+
+  if (!response || !Array.isArray(response)) return [];
+
+  const results = response.map((item) => {
+    if (!item || !item.document || !item.document.fields) return null;
+    
+    const doc = item.document;
+    try {
+      const f = fromFirestoreFields(doc.fields);
+      const docId = doc.name.split('/').pop();
+      const docNo = (f.doc_no || "").trim(); 
+
+      const dataObj = {
+        docId: docId,
+        ref: docNo,                    
+        date: f.doc_date || "-",          
+        supplier: f.supplier || "-",
+        shop: f.shop || "-",
+        list: f.list || "-",
+        url: f.url || "",
+        amount: parseFloat(f.total_amount || f.net_amount || 0)
+      };
+      
+      if (status === 'claimed') {
+        return (docNo !== "") ? dataObj : null;
+      }
+      if (status === 'not_claimed') {
+        return (docNo === "") ? dataObj : null;
+      }
+      return dataObj;
+
+    } catch (err) {
+      return null;
+    }
+  }).filter(item => item !== null); 
+
+  Logger.log(`สรุป: พบรายการที่ตรงเงื่อนไข (${status}) ทั้งหมด ${results.length} รายการ`);
+  return results;
+}
+
+function savePaymentTransaction(payload, userObj) { // 🎯 1. เพิ่มพารามิเตอร์ userObj มารับค่าโปรไฟล์จากหน้าบ้าน
+  const lock = LockService.getScriptLock();
+  try {
+    // 1. ล็อกคิวป้องกันระบบทำงานซ้อนกัน 30 วินาที
+    lock.waitLock(30000);
+
+    const { docIds, slip, receipt, namingInfo, pay_ch, pay_day } = payload;
+    const { doc_no, supplier, total_amount } = namingInfo;
+    
+    if (!docIds || docIds.length === 0) throw new Error("ไม่พบรหัสเอกสาร (docIds)");
+
+    // 2. ดึงสิทธิ์ความปลอดภัยคีย์ Firebase
+    const scriptProperties = PropertiesService.getScriptProperties();
+    const keyFileRaw = scriptProperties.getProperty('FIREBASE_KEY');
+    if (!keyFileRaw) throw new Error("ไม่พบคีย์ FIREBASE_KEY ในระบบ Script Properties");
+    
+    const keyFile = JSON.parse(keyFileRaw);
+    const token = getAccessToken(keyFile);
+    const bucketName = "atom-group-phi-phi.firebasestorage.app";
+
+    // 🎯 3. ดึงข้อมูลบิลใบแรกจาก Firestore เพื่อระบุชื่อร้านค้ามาตรฐาน (ใช้ฟังก์ชันกลาง)
+    const firstDocRes = callFirestore("GET", `expense/${encodeURIComponent(docIds[0])}`);
+    if (firstDocRes.error) throw new Error("ไม่สามารถดึงข้อมูลบิลเพื่อระบุชื่อร้านค้าได้: " + firstDocRes.error.message);
+    const firstDocFields = fromFirestoreFields(firstDocRes.fields);
+    const rawShop = firstDocFields.shop || "Unknown";
+    
+    // 🎯 ใช้ฟังก์ชันกลาง getUnifiedShopName แทนการประกาศฟังก์ชันซ้อน
+    const shopFolder = getUnifiedShopName(rawShop);
+
+    // 🎯 4. แตกโครงสร้าง วัน/เดือน/ปี จากวันที่โอนจ่าย (pay_day: YYYY-MM-DD)
+    let year = "2026", month = "01", day = "01";
+    if (pay_day && pay_day.includes("-")) {
+      const dateParts = pay_day.split("-");
+      year = dateParts[0] || "2026";
+      month = (dateParts[1] || "01").padStart(2, '0');
+      day = (dateParts[2] || "01").padStart(2, '0');
+    }
+
+    // ล้างตัวอักษรพิเศษออกจากชื่อไฟล์ป้องกันลิ้งค์พัง
+    const cleanBaseName = `${doc_no}_${supplier}_${total_amount}`.replace(/[/\\?%*:|"<> ]/g, '_');
+
+    let slipUrl = "-";
+    let receiptUrl = "-";
+
+    // 🚀 5. สั่งลุยอัปโหลดหลักฐาน Slip เข้ากลุ่มคลังเสมือน slip_library
+    if (slip && slip.base64) {
+      const ext = slip.name.split('.').pop();
+      const firebasePath = `slip_library/${shopFolder}/${year}/${month}/${day}/SLIP_${cleanBaseName}.${ext}`;
+      slipUrl = uploadPaymentFileToFirebaseStorage(slip, firebasePath, bucketName, token);
+    }
+
+    // 🚀 6. สั่งลุยอัปโหลดหลักฐานใบเสร็จ Receipt เข้ากลุ่มคลังเสมือน slip_library
+    if (receipt && receipt.base64) {
+      const ext = receipt.name.split('.').pop();
+      const firebasePath = `slip_library/${shopFolder}/${year}/${month}/${day}/RECEIPT_${cleanBaseName}.${ext}`;
+      receiptUrl = uploadPaymentFileToFirebaseStorage(receipt, firebasePath, bucketName, token);
+    }
+
+    // 7. เตรียมชุดข้อมูลสลักหลังปิดยอดบิลจ่ายเงินเรียบร้อย
+    const updateData = {
+      paid: "true",
+      receipt: receiptUrl,
+      slip: slipUrl,
+      pay_ch: pay_ch,
+      pay_day: pay_day,
+      paid_at: new Date().toISOString()
+    };
+
+    // ทำโครงสร้าง Mask ป้องกันฟิลด์อื่นในเอกสารโดนลบกระจุย
+    const updateMask = Object.keys(updateData)
+      .map(key => `updateMask.fieldPaths=${key}`)
+      .join('&');
+
+    const firestorePayload = toFirestoreFields(updateData);
+
+    // 8. วนลูปอัปเดตสถานะบิลค้างจ่ายทุกใบ
+    docIds.forEach(id => {
+      const pathWithMask = `expense/${encodeURIComponent(id)}?${updateMask}`;
+      const res = callFirestore("PATCH", pathWithMask, firestorePayload);
+      if (res && res.error) {
+        Logger.log(`Error ID ${id}: ` + JSON.stringify(res.error));
+      }
+    });
+
+    // 🎯 2. เปลี่ยนพารามิเตอร์ท้ายสุดจาก null เป็น userObj เพื่อลงล็อกชื่อคนกดจ่ายเงินสำเร็จ
+    insertAuditLog("PAYMENT_SUCCESS", `จ่ายเงินบิลเลขที่: ${doc_no} ร้าน: ${shopFolder} จำนวน: ${docIds.length} ใบ`, userObj);
+
+    return { success: true };
+
+  } catch (e) {
+    console.error("savePaymentTransaction Error: " + e.toString());
+    // 🎯 3. เปลี่ยนพารามิเตอร์ท้ายสุดในบล็อก Error เป็น userObj เพื่อให้รู้ว่าใครกำลังทำงานอยู่ตอนที่ระบบหลุด
+    insertAuditLog("PAYMENT_FAIL", `จ่ายเงินล้มเหลว: ${doc_no || 'Unknown'} สาเหตุ: ${e.message}`, userObj);
+    throw new Error("บันทึกข้อมูลล้มเหลว: " + e.message);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function uploadPaymentFileToFirebaseStorage(fileObj, firebasePath, bucketName, token) {
+  try {
+    const bytes = Utilities.base64Decode(fileObj.base64);
+    const fileName = firebasePath.split('/').pop();
+    
+    // 🎯 ห่อหุ้มเนื้อไฟล์ให้อยู่ในสถานะวัตถุ Blob บริสุทธิ์ก่อนยิงส่งคลาวด์
+    const blob = Utilities.newBlob(bytes, fileObj.type, fileName);
+
+    // ขั้นยิงเนื้อไฟล์ดิบเข้าถังเก็บ
+    const uploadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o?uploadType=media&name=${encodeURIComponent(firebasePath)}`;
+    const uploadOptions = {
+      method: "post",
+      contentType: fileObj.type,
+      payload: blob, 
+      headers: { Authorization: "Bearer " + token },
+      muteHttpExceptions: true
+    };
+    
+    const uploadResponse = UrlFetchApp.fetch(uploadUrl, uploadOptions);
+    if (uploadResponse.getResponseCode() !== 200) {
+      throw new Error("Firebase Storage Upload Failed: " + uploadResponse.getContentText());
+    }
+
+    // 🎯 [แก้ไขวิกฤตบั๊กสิทธิ์รูปพัง]: 
+    // ยุบขบวนการ PATCH เมทาดาตารอบสองทิ้งไปเพื่อเลี่ยง Error 400 
+    // ขยับมาแกะเอาค่า downloadTokens ของจริงที่ระบบ Firebase เจนเนอเรตมาให้โดยอัตโนมัติในขบวนการ Response แรกทันที
+    const responseData = JSON.parse(uploadResponse.getContentText());
+    const downloadToken = responseData.downloadTokens;
+
+    if (!downloadToken) {
+      throw new Error("ระบบ Cloud ไม่ได้ส่งสิทธิ์ Download Token กลับมา");
+    }
+
+    // พ่นลิงก์ URL พรีวิวสาธารณะตัวสมบูรณ์แบบใช้ Token แท้ ส่งกลับไปบันทึกลงฐานข้อมูลอย่างปลอดภัย
+    return `https://firebasestorage.googleapis.com/v0/b/${bucketName}/o/${encodeURIComponent(firebasePath)}?alt=media&token=${downloadToken}`;
+
+  } catch (e) {
+    Logger.log("เกิดปัญหาระหว่างอัปโหลดไฟล์สลิป: " + e.toString());
+    throw e;
+  }
+}
+
+function getNormalizedShopName(rawShopName) {
+  if (!rawShopName) return 'Unknown';
+  
+  const cleanKey = rawShopName.toString().trim().toLowerCase();
+  
+  const shopMapping = {
+    'atom': 'Atom',
+    'atom_beach': 'Atom_Beach',
+    'atom_beach ': 'Atom_Beach',
+    'atom_history': 'Atom_Beach', // ตัวอย่างเผื่อกรณีแอดมินพิมพ์ฟอร์แมตอื่น
+    'good_time': 'Good_Time',
+    'good_time ': 'Good_Time',
+    'tigerking': 'Tiger_King_Bar_&_Bistro',
+    'tiger_king_bar_&_bistro': 'Tiger_King_Bar_&_Bistro',
+    'paradise': 'Paradise'
+  };
+
+  return shopMapping[cleanKey] || rawShopName; 
+}
+
+function toFirestoreFields(obj) {
+  const fields = {};
+  for (const key in obj) {
+    fields[key] = toFirestoreValue(obj[key]);
+  }
+  return { fields: fields };
+}
+
+function toFirestoreValue(val) {
+  if (val === null || val === undefined) {
+    return { nullValue: null };
+  }
+  if (Array.isArray(val)) {
+    return { arrayValue: { values: val.map(toFirestoreValue) } };
+  }
+  if (typeof val === 'object' && !(val instanceof Date)) {
+    const mapFields = {};
+    for (const k in val) {
+      mapFields[k] = toFirestoreValue(val[k]);
+    }
+    return { mapValue: { fields: mapFields } };
+  }
+  if (typeof val === 'number') {
+    return { doubleValue: val };
+  }
+  if (typeof val === 'boolean') {
+    return { booleanValue: val };
+  }
+  return { stringValue: String(val) };
+}
+
+function sendBatchCommit(writes) {
+  console.log(`🚀 กำลังส่ง Batch จำนวน ${writes.length} รายการ...`);
+  try {
+    const res = callFirestore("POST", ":commit", { writes: writes });
+    if (res && res.error) {
+      console.error("❌ Batch Error: " + JSON.stringify(res.error));
+    }
+  } catch (e) {
+    console.error("❌ Batch Exception: " + e.message);
+  }
+}
+
+function formatShopToIncomeStyle(name) {
+  if (!name) return "Unknown";
+  
+  // 1. แปลงเป็นตัวเล็กและตัดช่องว่างหัวท้าย เพื่อใช้ตรวจสอบเคสพิเศษ
+  const shopLower = name.toString().trim().toLowerCase();
+
+  // 2. รายการเคสพิเศษ (Mapping)
+  const specialCases = {
+    'goodtime': 'Good_Time',
+    'atombeach': 'Atom_Beach',
+    'atom': 'Atom',
+    'paradise': 'Paradise',
+    'tigerking': 'Tiger_King_Bar_&_Bistro'
+  };
+
+  // 3. ตรวจสอบเงื่อนไขเคสพิเศษก่อน
+  if (specialCases[shopLower]) {
+    return specialCases[shopLower];
+  }
+
+  // 4. หากไม่ใช่เคสพิเศษ ให้ใช้ Logic มาตรฐาน (Title Case + Underscore)
+  return name.toString().trim()
+    .split(/\s+/) 
+    .map(word => {
+      if (word.length === 0) return "";
+      return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+    })
+    .join('_');
+}
+
+function getAllCashoutData(filterObj = {}) {
+  console.log("--- [START] getAllCashoutData (Localized Daily Precision Mode) ---");
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const projectId = keyFile.project_id;
+  const dbPrefix = `projects/${projectId}/databases/(default)/documents`;
+
+  const ROOT_COLLECTION = "cashout"; 
+
+  // 🎯 1. แกะค่าวันที่ที่ส่งมาจากหน้าบ้าน (ฟอร์แมต YYYY-MM-DD เช่น "2026-06-17")
+  let targetDateStr = filterObj.dateRaw; 
+  if (!targetDateStr) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    targetDateStr = `${yyyy}-${mm}-${dd}`;
+  }
+
+  // 🎯 2. รายชื่อ 5 ร้านค้าหลักตรงตามโครงสร้างระบบ
+  let shopsToFetch = [];
+  const isAllShops = !filterObj.shop || filterObj.shop === "All" || filterObj.shop === "" || filterObj.shop === "-- ทุกร้าน --";
+
+  if (isAllShops) {
+    shopsToFetch = ['Atom', 'Atom_Beach', 'Good_Time', 'Tiger_King_Bar_&_Bistro', 'Paradise'];
+  } else {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(filterObj.shop) : filterObj.shop;
+    shopsToFetch = [shopFormatted];
+  }
+
+  const folderDataList = [];
+  const incomeFullPaths = [];
+
+  // 🎯 3. สร้างเส้นทางเพื่อดึงข้อมูลหลักผ่าน BatchGet
+  const cashoutPathsToFetch = [];
+  const pathToMetaMap = {};
+
+  shopsToFetch.forEach(shop => {
+    const oldPath = `${dbPrefix}/${ROOT_COLLECTION}/${shop}/days/${targetDateStr}`;
+    cashoutPathsToFetch.push(oldPath);
+    pathToMetaMap[oldPath] = { shopName: shop, dateKey: targetDateStr };
+  });
+
+  // ทำ Batch Get ดึงข้อมูลฝั่งสถานะ Cash Out
+  if (cashoutPathsToFetch.length > 0) {
+    const uniquePaths = [...new Set(cashoutPathsToFetch)];
+    try {
+      const batchResponse = callFirestore("POST", ":batchGet", { documents: uniquePaths });
+      
+      if (Array.isArray(batchResponse)) {
+        batchResponse.forEach(res => {
+          if (res.found) {
+            const currentPath = res.found.name;
+            const meta = pathToMetaMap[currentPath];
+            if (meta) {
+              const fields = fromFirestoreFields(res.found.fields) || {};
+              
+              folderDataList.push({
+                shopName: meta.shopName,
+                dateKey: meta.dateKey,
+                url: fields.folder_url || fields.url || "",
+                status: fields.status || "pending",
+                parentBillTotal: Number(fields.bill_total || fields.total_amount || 0),
+                fullPathId: `${meta.shopName}/days/${meta.dateKey}`
+              });
+            }
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ เกิดข้อผิดพลาดในการดึงข้อมูลหลัก Cash Out ผ่าน BatchGet: " + e.message);
+    }
+  }
+
+  // เติมร้านค้าสแตนด์บายกรณีไม่มีประวัติอัปโหลด
+  shopsToFetch.forEach(shop => {
+    const hasData = folderDataList.some(item => item.shopName === shop);
+    if (!hasData) {
+      folderDataList.push({
+        shopName: shop,
+        dateKey: targetDateStr,
+        url: "",
+        status: "pending",
+        parentBillTotal: 0,
+        fullPathId: `${shop}/days/${targetDateStr}`
+      });
+    }
+  });
+
+  // 🎯 4. ดึงยอดเงินสดออกจากฝั่ง income (income -> daily_records)
+  folderDataList.forEach(item => {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(item.shopName) : item.shopName;
+    const targetPath = `${dbPrefix}/income/${shopFormatted}/daily_records/${item.dateKey}`;
+    incomeFullPaths.push(targetPath);
+  });
+
+  const incomeMap = {};
+  if (incomeFullPaths.length > 0) {
+    const uniqueIncomePaths = [...new Set(incomeFullPaths)];
+    try {
+      const batchResponse = callFirestore("POST", ":batchGet", { documents: uniqueIncomePaths });
+      if (Array.isArray(batchResponse)) {
+        batchResponse.forEach(res => {
+          if (res.found) {
+            const fullPathName = res.found.name;
+            const f = res.found.fields.cash_out;
+            incomeMap[fullPathName] = f ? (f.doubleValue || f.integerValue || (f.stringValue ? parseFloat(f.stringValue) : 0)) : 0;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ เกิดข้อผิดพลาดในการดึงยอดเงินสดออกจากโครงสร้าง income: " + e.message);
+    }
+  }
+
+  // 🎯 5. [เพิ่มใหม่]: ดึงบิลย่อยใน Subcollection "bills" ของแต่ละร้าน เพื่อรวมยอดจริงที่ถอดจากบิลสแกน (billTotalAmount)
+  const billTotalMap = {};
+  folderDataList.forEach(item => {
+    const targetSubCollection = `cashout/${item.fullPathId}/bills`;
+    let shopBillTotal = 0;
+    
+    try {
+      const billsResponse = callFirestore("GET", targetSubCollection);
+      if (billsResponse && billsResponse.documents && Array.isArray(billsResponse.documents)) {
+        billsResponse.documents.forEach(doc => {
+          if (doc.fields) {
+            const bFields = fromFirestoreFields(doc.fields) || {};
+            const bTotal = Number(bFields.bill_total) || Number(bFields.total_amount) || 0;
+            shopBillTotal += bTotal;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn(`⚠️ ไม่สามารถดึงบิลย่อยของ ${item.fullPathId}: ` + e.message);
+    }
+
+    // ถ้ารวมจาก bills ได้มากกว่า 0 ให้ใช้ค่านั้น ถ้าไม่มีใช้ค่า parentBillTotal (ถ้ามี)
+    billTotalMap[item.fullPathId] = shopBillTotal > 0 ? shopBillTotal : (item.parentBillTotal || 0);
+  });
+
+  // 🎯 6. แมปข้อมูลส่งกลับหน้าบ้าน (พร้อมทั้ง 2 ยอดเงิน)
+  const result = folderDataList.map(item => {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(item.shopName) : item.shopName;
+    const targetPath = `${dbPrefix}/income/${shopFormatted}/daily_records/${item.dateKey}`;
+
+    return {
+      docId: item.fullPathId, 
+      shop: item.shopName,
+      dateShow: item.dateKey, // YYYY-MM-DD
+      dateRaw: item.dateKey,
+      url: item.url, 
+      status: item.status, 
+      billTotalAmount: billTotalMap[item.fullPathId] || 0, // 🟢 [เพิ่มใหม่]: ยอด cash out จากบิลจริง (สแกนถอดได้)
+      cashOutAmount: incomeMap[targetPath] || 0            // 🔵 ยอด cash out ที่พนักงานคีย์ในระบบหลัก
+    };
+  });
+
+  console.log(`📊 ดึงข้อมูลรายวันสำเร็จ [${targetDateStr}] ยอดรวมที่พร้อมแสดงผล: ${result.length} รายการ`);
+  return result;
+}
+
+function getCashoutItems(datePath) {
+  console.log("--- [START] getCashoutItems (🎯 List Subcollection Documents Mode) ---");
+  if (!datePath) return [];
+  
+  const targetSubCollection = `cashout/${datePath}/bills`;
+  console.log("📡 กำลังเจาะทะลวงเข้าหาข้อมูลบิลที่พิกัดคลาวด์:", targetSubCollection);
+  
+  let finalBillsStructure = [];
+
+  try {
+    const response = callFirestore("GET", targetSubCollection);
+    
+    if (response && response.documents && Array.isArray(response.documents)) {
+      
+      response.documents.forEach(doc => {
+        if (doc.fields) {
+          const billFields = fromFirestoreFields(doc.fields) || {};
+          const finalTotal = Number(billFields.bill_total) || Number(billFields.total_amount) || 0;
+          const finalUrl = billFields.url || billFields.folder_url || "";
+
+          let extractedItems = [];
+          
+          if (doc.fields.items && doc.fields.items.arrayValue && doc.fields.items.arrayValue.values) {
+            const rawValues = doc.fields.items.arrayValue.values;
+            
+            extractedItems = rawValues.map(v => {
+              const f = (v.mapValue && v.mapValue.fields) ? v.mapValue.fields : {};
+              
+              const itemName = f.list ? (f.list.stringValue || "") : (f.name ? f.name.stringValue : "");
+              const itemPrice = f.price ? Number(f.price.doubleValue || f.price.integerValue || f.price.stringValue || 0) : 0;
+              const itemQty = f.quantity ? Number(f.quantity.integerValue || f.quantity.doubleValue || f.quantity.stringValue || 0) : (f.qty ? Number(f.qty.integerValue || f.qty.doubleValue || 0) : 0);
+              const itemTotal = f.total ? Number(f.total.doubleValue || f.total.integerValue || f.total.stringValue || 0) : (f.amount ? Number(f.amount.doubleValue || f.amount.integerValue || 0) : 0);
+              
+              return {
+                list: itemName || "ไม่มีชื่อรายการ",
+                price: itemPrice,
+                quantity: itemQty,
+                total: itemTotal
+              };
+            });
+          } else if (billFields.items && Array.isArray(billFields.items)) {
+            extractedItems = billFields.items.map(item => ({
+              list: item.list || item.name || "ไม่มีชื่อรายการ",       
+              price: Number(item.price) || 0,
+              quantity: Number(item.quantity) || 0,
+              total: Number(item.total) || Number(item.amount) || 0          
+            }));
+          }
+          
+          finalBillsStructure.push({
+            supplier: billFields.supplier || "บิลเงินสด/ไม่ระบุรายชื่อ",
+            billTotal: finalTotal, 
+            url: finalUrl,
+            shopBill: billFields.shop_bill || datePath.split('/')[0],
+            dateBill: billFields.date_bill || datePath.split('/').pop(),
+            category: billFields.category || "", 
+            items: extractedItems
+          });
+        }
+      });
+      
+    } else {
+      console.log("⚠️ ไม่พบเอกสารสลิปใดๆ บันทึกอยู่ในห้องย่อย bills");
+    }
+
+  } catch (e) {
+    console.error("❌ เกิดข้อผิดพลาดในขั้นตอนเจาะเอกสารย่อย Subcollection: " + e.message);
+  }
+
+  console.log(`✅ สกัดข้อมูลสลิปสำเร็จและส่งกลับหน้าบ้านรวมทั้งสิ้น: ${finalBillsStructure.length} ใบเสร็จ`);
+  return finalBillsStructure;
+}
+
+function formatDateToISO(dateStr) {
+  if (!dateStr) return "";
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const day = parts[0].padStart(2, '0');
+  const month = parts[1].padStart(2, '0');
+  const year = parts[2];
+  return `${year}-${month}-${day}`;
+}
+
+/**
+ * 🚀 บันทึกอัปเดตข้อมูลบิลทั้งหมดลง Firestore แบบ Batch Commit
+ * (วางฟังก์ชันนี้ในไฟล์ Code.gs ชั้นนอกสุด)
+ */
+function saveAllDayBillsToFirestore(datePath, billsDataArray) {
+  console.log("--- [START] saveAllDayBillsToFirestore (🚀 Batch Commit Mode) ---");
+  if (!datePath || !billsDataArray || billsDataArray.length === 0) return "ไม่มีข้อมูลเพื่อบันทึก";
+
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const projectId = keyFile.project_id;
+  
+  const dbPrefix = `projects/${projectId}/databases/(default)/documents`;
+  const parentDocumentPath = `${dbPrefix}/cashout/${datePath}`; // พิกัดหลักของวันที่ เช่น Atom/days/2026-06-01
+  const billsSubCollectionPath = `${parentDocumentPath}/bills`;  // คลังย่อยที่เก็บเอกสารบิลจริง
+
+  const writes = [];
+
+  try {
+    // 📡 ดึงข้อมูลบิลดั้งเดิมบนคลาวด์มาก่อน เพื่อดึง Document ID จริง มาจับคู่เขียนทับ
+    const response = callFirestore("GET", `cashout/${datePath}/bills`);
+    
+    if (response && response.documents && Array.isArray(response.documents)) {
+      
+      response.documents.forEach((doc, idx) => {
+        const fullDocName = doc.name; // พาร์ทเต็มของบิลแต่ละใบใน Firestore
+        const billFieldsRaw = doc.fields || {};
+        
+        // จับคู่ข้อมูลจากหน้าบ้านที่ส่งเรียงลำดับตาม index ตรงกัน
+        const updatedBill = billsDataArray[idx];
+        
+        if (updatedBill) {
+          // 🛠️ แปลงอาร์เรย์ items หน้าบ้านกลับไปเป็นฟอร์แมต Array ของ Map ใน Firestore
+          const firestoreItemsValue = {
+            arrayValue: {
+              values: updatedBill.items.map(item => {
+                return {
+                  mapValue: {
+                    fields: {
+                      list: { stringValue: item.list || "ไม่มีชื่อรายการ" },
+                      price: { doubleValue: Number(item.price) || 0 },
+                      quantity: { doubleValue: Number(item.quantity) || 1 },
+                      total: { doubleValue: Number(item.total) || 0 }
+                    }
+                  }
+                };
+              })
+            }
+          };
+
+          // 🛠️ สร้าง Payload ชุดข้อมูลที่จะสั่งอัปเดต (🎯 เพิ่ม supplier เรียบร้อยแล้ว)
+          const updatedFields = {
+            ...billFieldsRaw, // แตกฟิลด์เดิมไว้ก่อนเพื่อไม่ให้ค่าอื่น ๆ หาย
+            "supplier": { stringValue: updatedBill.supplier || "" }, // 🟢 [เพิ่มใหม่]: เซฟชื่อ Supplier
+            "shop_bill": { stringValue: updatedBill.shopBill || "" },
+            "category": { stringValue: updatedBill.category || "" },
+            "bill_total": { doubleValue: Number(updatedBill.billTotal) || 0 },
+            "items": firestoreItemsValue
+          };
+
+          // บรรจุเข้าแผนคำสั่ง Update เอกสารบิลใบนั้น ๆ
+          writes.push({
+            update: {
+              name: fullDocName,
+              fields: updatedFields
+            },
+            // 🎯 [เพิ่ม "supplier" ลงใน updateMask เพื่ออนุญาตให้เขียนทับฟิลด์ supplier ได้]
+            updateMask: { fieldPaths: ["supplier", "shop_bill", "category", "bill_total", "items"] }
+          });
+        }
+      });
+    }
+
+    // 🎯 2. สั่งแถมท้าย: เปลี่ยนสถานะเอกสาร Parent หลัก (ระนาบวันที่) ให้เป็น "done" ตรวจสอบแล้ว
+    writes.push({
+      update: {
+        name: parentDocumentPath,
+        fields: { "status": { "stringValue": "done" } }
+      },
+      updateMask: { fieldPaths: ["status"] }
+    });
+
+    // 🚀 ยิงชุดคำสั่งเซฟทั้งหมดขึ้นไปบน Firestore คลาวด์ในครั้งเดียว (Batch Commit)
+    if (writes.length > 0) {
+      const commitPayload = { writes: writes };
+      callFirestore("POST", ":commit", commitPayload);
+      console.log(`✅ บันทึก Batch Commit บิลจำนวน ${writes.length - 1} ใบ และอัปเดต Parent Status เรียบร้อย!`);
+      return "success";
+    }
+
+  } catch (e) {
+    console.error("❌ ข้อผิดพลาดในฟังก์ชันเซฟข้อมูล Batch Commit: " + e.message);
+    throw new Error(e.message);
+  }
+
+  return "ไม่มีการดำเนินการใดๆ";
+}
+
+/**
+ * 1. บันทึกข้อมูล หรือบันทึกซ้ำใบสั่งซื้อ (ฉบับร่าง)
+ * @param {Object} poData ชุดข้อมูลสั่งซื้อส่งมาจากหน้าบ้าน
+ */
+function savePurchaseOrderDraft(poData) {
+  const docId = poData.id;
+  const cleanData = { ...poData };
+  delete cleanData.id; // ลบไอดีออกก่อนแปลงฟิลด์
+  
+  cleanData.updated_at = new Date().toISOString();
+  const payload = toFirestoreFields(cleanData);
+  
+  let result;
+  if (docId) {
+    // โหมดแก้ไขตัวเดิม (บันทึกซ้ำ)
+    result = callFirestore("PATCH", `purchase_orders/${encodeURIComponent(docId)}`, payload);
+  } else {
+    // โหมดสร้างใหม่ครั้งแรก
+    cleanData.created_at = new Date().toISOString();
+    result = callFirestore("POST", "purchase_orders", toFirestoreFields(cleanData));
+  }
+  
+  if (result && !result.error) {
+    return { success: true, id: docId || result.name.split('/').pop() };
+  }
+  return { success: false, error: result.error || "เกิดข้อผิดพลาดที่ระบบฐานข้อมูล" };
+}
+
+/**
+ * 2. ล็อกคิวตัวเลขเอกสารและจัดทำใบสั่งซื้อฉบับสมบูรณ์ (Issued) 
+ * ป้องกันเลขรันชนกันโดยถอดแบบโครงสร้างการรันมาจาก /explog/expense_doc_no
+ */
+function finalizeAndIssuePO(poData) {
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const projectId = keyFile.project_id;
+  
+  // จัดเตรียมรูปแบบ Prefix ตามเดือน/ปีปัจจุบัน เช่น กรกฎาคม 2026 -> "PO0726"
+  const now = new Date();
+  const yy = String(now.getFullYear()).substring(2);
+  const mm = String(now.getMonth() + 1).padStart(2, '0');
+  const currentPrefix = `PO${mm}${yy}`;
+  
+  // 1. เปิดระบบจองคิวข้อมูล (Begin Transaction)
+  const beginRes = callFirestore("POST", ":beginTransaction", { options: { readWrite: {} } });
+  if (!beginRes || !beginRes.transaction) {
+    return { success: false, error: "ไม่สามารถเปิดสิทธิ์การจองเลขบิลในระบบได้" };
+  }
+  const transactionId = beginRes.transaction;
+
+  try {
+    // 2. ดึงข้อมูลเลขล่าสุดจากคอลเลกชัน polog เอกสาร po_doc_no ภายใต้ Transaction นี้
+    const counterPath = `projects/${projectId}/databases/(default)/documents/polog/po_doc_no`;
+    const batchGetRes = callFirestore("POST", ":batchGet", {
+      documents: [counterPath],
+      transaction: transactionId
+    });
+
+    let lastNumber = 0;
+    let lastPrefix = "";
+
+    // ถ้าเคยมีบันทึกตัวนับอยู่แล้ว ให้แกะฟิลด์ข้อมูลออกมาใช้งาน
+    if (batchGetRes && batchGetRes[0] && batchGetRes[0].found) {
+      const fields = batchGetRes[0].found.fields;
+      if (fields) {
+        if (fields.last_number) lastNumber = Number(fields.last_number.integerValue || fields.last_number.doubleValue || 0);
+        if (fields.last_prefix) lastPrefix = fields.last_prefix.stringValue || "";
+      }
+    }
+
+    // 3. เงื่อนไขตัดสินการรันเลขบิล: หากเปลี่ยนเดือนใหม่ให้เริ่มต้นนับ 1 ใหม่
+    let nextNumber = 1;
+    if (lastPrefix === currentPrefix) {
+      nextNumber = lastNumber + 1;
+    }
+
+    // ฟอร์แมตออกเลขบิลทางการ เช่น PO0726-0077
+    const finalPoNo = `${currentPrefix}-${String(nextNumber).padStart(4, '0')}`;
+    
+    // 4. ผูกตัวแปรเพิ่มเติมเข้าไปใน Object ก่อนส่งเข้าฐานข้อมูล
+    poData.po_number = finalPoNo;
+    poData.status = "issued";
+    poData.issued_at = new Date().toISOString();
+    
+    const newDocPath = `projects/${projectId}/databases/(default)/documents/purchase_orders/${finalPoNo}`;
+    
+    // 5. เตรียมคำสั่งคอมมิตบันทึกแบบกลุ่ม (Atomic Write Commit)
+    const commitPayload = {
+      transaction: transactionId,
+      writes: [
+        {
+          // สั่งอัปเดตตัวนับตัวล่าสุดในเดือนปัจจุบันกลับไปที่คอลเลกชัน polog
+          update: {
+            name: counterPath,
+            fields: {
+              last_number: { integerValue: nextNumber },
+              last_prefix: { stringValue: currentPrefix }
+            }
+          }
+        },
+        {
+          // สั่งสร้างเอกสารใบสั่งซื้อตัวจริงลงคอลเลกชันหลัก
+          update: {
+            name: newDocPath,
+            fields: toFirestoreFields(poData).fields
+          }
+        }
+      ]
+    };
+
+    // ตัวเสริมพิเศษ: หากบิลนี้เคยเซฟเป็นแบบร่าง (Draft) มาก่อน ให้สั่งลบใบฉบับร่างชั่วคราวทิ้งไปด้วยครับ
+    if (poData.id && poData.id !== finalPoNo) {
+      commitPayload.writes.push({
+        delete: `projects/${projectId}/databases/(default)/documents/purchase_orders/${poData.id}`
+      });
+    }
+
+    const commitRes = callFirestore("POST", ":commit", commitPayload);
+    if (commitRes && !commitRes.error) {
+      return { success: true, po_number: finalPoNo };
+    } else {
+      return { success: false, error: commitRes.error ? JSON.stringify(commitRes.error) : "Commit Failed" };
+    }
+
+  } catch (err) {
+    Logger.log("Error in finalizeAndIssuePO: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// ------------------------------------------------------------------------
+// 1. ดึงรายชื่อ User จาก Collection "users" มาใส่ Dropdown
+// ------------------------------------------------------------------------
+function getUserListDev() {
+  try {
+    Logger.log("=== 📥 [START] ดึงรายชื่อผู้ใช้จาก 'users' ===");
+    const response = callFirestore("GET", "users");
+    
+    if (!response || !response.documents) {
+      Logger.log("❌ ไม่พบเอกสารใน collection 'users' หรือโครงสร้าง response ไม่ถูกต้อง");
+      return [];
+    }
+
+    let users = [];
+    response.documents.forEach((doc, idx) => {
+      // แกะ Document ID (LINE User ID)
+      const docName = doc.name || "";
+      const userId = docName.split("/").pop();
+      
+      const fields = doc.fields || {};
+      const name = (fields.name && fields.name.stringValue) ? fields.name.stringValue : userId;
+
+      if (userId) {
+        users.push({ id: userId, name: name });
+      }
+    });
+
+    Logger.log(`✅ ดึงรายชื่อสำเร็จ: ทั้งหมด ${users.length} คน`);
+    Logger.log("📄 รายชื่อตัวอย่าง: " + JSON.stringify(users.slice(0, 5)));
+    
+    return users.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) {
+    Logger.log("❌ เกิดข้อผิดพลาดใน getUserListDev: " + e.toString());
+    return [];
+  }
+}
+
+function getAuditLogsDev(searchUserId, searchDate) {
+  try {
+    Logger.log("==========================================");
+    Logger.log("🔍 [SEARCH LOGS] เริ่มต้นค้นหา Audit Logs (แปลงเวลา GMT+7)");
+    Logger.log(`👉 searchUserId: '${searchUserId}', searchDate: '${searchDate}'`);
+
+    const payload = {
+      structuredQuery: {
+        from: [{ collectionId: "audit_logs" }],
+        orderBy: [
+          {
+            field: { fieldPath: "__name__" },
+            direction: "DESCENDING" // ดึงเอกสารใหม่ล่าสุดขึ้นก่อน
+          }
+        ],
+        limit: 500
+      }
+    };
+
+    if (searchUserId && searchUserId.trim() !== "") {
+      payload.structuredQuery.where = {
+        fieldFilter: {
+          field: { fieldPath: "user_id" },
+          op: "EQUAL",
+          value: { stringValue: searchUserId.trim() }
+        }
+      };
+    }
+
+    const response = callFirestore("POST", ":runQuery", payload);
+
+    if (!response || response.error) {
+      Logger.log("❌ callFirestore เกิดข้อผิดพลาด: " + JSON.stringify(response ? response.error : "null"));
+      return [];
+    }
+
+    let rawDocs = [];
+    if (Array.isArray(response)) {
+      rawDocs = response.map(item => item.document).filter(doc => doc && doc.fields);
+    } else if (response.documents && Array.isArray(response.documents)) {
+      rawDocs = response.documents;
+    }
+
+    Logger.log(`📦 ดึงเอกสารจาก Firestore สำเร็จทั้งหมด: ${rawDocs.length} รายการ`);
+
+    let results = [];
+    const cleanDate = searchDate ? searchDate.trim() : "";
+
+    rawDocs.forEach((doc, idx) => {
+      const fields = doc.fields || {};
+      const userId = (fields.user_id && fields.user_id.stringValue) ? fields.user_id.stringValue : "";
+      const userName = (fields.user_name && fields.user_name.stringValue) ? fields.user_name.stringValue : "";
+      const timestamp = (fields.timestamp && fields.timestamp.stringValue) ? fields.timestamp.stringValue : "";
+      const action = (fields.action && fields.action.stringValue) ? fields.action.stringValue : "";
+      const details = (fields.details && fields.details.stringValue) ? fields.details.stringValue : "";
+
+      // 🎯 แปลง ISO Timestamp (UTC) ให้เป็น วันที่เวลาไทย (GMT+7: YYYY-MM-DD)
+      let docDateStr = "";
+      if (timestamp) {
+        try {
+          docDateStr = Utilities.formatDate(new Date(timestamp), "GMT+7", "yyyy-MM-dd");
+        } catch (e) {
+          docDateStr = timestamp.substring(0, 10);
+        }
+      }
+
+      let matchDate = cleanDate ? (docDateStr === cleanDate) : true;
+
+      // 📌 พ่น Log รายการ 5 รายการแรก เพื่อตรวจดูการแปลงวันที่จริง
+      if (idx < 5) {
+        Logger.log(`📄 [#${idx + 1}] Raw: '${timestamp}' -> Local Date: '${docDateStr}' | Target Date: '${cleanDate}' | Match: ${matchDate}`);
+      }
+
+      if (matchDate) {
+        results.push({
+          timestamp: timestamp,
+          action: action,
+          details: details,
+          user_name: userName,
+          user_id: userId
+        });
+      }
+    });
+
+    Logger.log(`🎯 สรุปผลการค้นพบที่ตรงเงื่อนไข: ${results.length} รายการ`);
+    Logger.log("==========================================");
+
+    return results.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  } catch (e) {
+    Logger.log("❌ Exception ใน getAuditLogsDev: " + e.toString());
+    return [];
+  }
+}
+
+/**
+ * 🔍 ฟังก์ชันตรวจสอบเปรียบเทียบยอด Cash Out (ยอดถอดบิล vs ยอดพนักงานคีย์) รายเดือน
+ * @param {Object} filterObj - { month: "2026-06", shop: "All", statusFilter: "ALL", hideNoData: true }
+ */
+function checkCashoutAuditData(filterObj = {}) {
+  console.log("--- [START] checkCashoutAuditData (Monthly Audit Mode) ---");
+  const scriptProperties = PropertiesService.getScriptProperties();
+  const keyFile = JSON.parse(scriptProperties.getProperty('FIREBASE_KEY'));
+  const projectId = keyFile.project_id;
+  const dbPrefix = `projects/${projectId}/databases/(default)/documents`;
+
+  // 🎯 1. กำหนดเดือนที่ต้องการตรวจสอบ (ฟอร์แมต YYYY-MM เช่น "2026-06")
+  let targetMonth = filterObj.month;
+  if (!targetMonth) {
+    const today = new Date();
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    targetMonth = `${yyyy}-${mm}`;
+  }
+
+  // คำนวณวันทั้งหมดในเดือนที่เลือก
+  const [yearStr, monthStr] = targetMonth.split('-');
+  const year = parseInt(yearStr, 10);
+  const month = parseInt(monthStr, 10);
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  const dateKeys = [];
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dd = String(d).padStart(2, '0');
+    dateKeys.push(`${targetMonth}-${dd}`);
+  }
+
+  // 🎯 2. ร้านค้าที่ต้องการดึงข้อมูล
+  let shopsToFetch = [];
+  const isAllShops = !filterObj.shop || filterObj.shop === "All" || filterObj.shop === "" || filterObj.shop === "-- ทุกร้าน --";
+  if (isAllShops) {
+    shopsToFetch = ['Atom', 'Atom_Beach', 'Good_Time', 'Tiger_King_Bar_&_Bistro', 'Paradise'];
+  } else {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(filterObj.shop) : filterObj.shop;
+    shopsToFetch = [shopFormatted];
+  }
+
+  // 🎯 3. สร้าง Paths สำหรับ BatchGet (ยุบการส่ง Request ให้เหลือเท่าที่จำเป็น)
+  const cashoutPaths = [];
+  const incomePaths = [];
+
+  shopsToFetch.forEach(shop => {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(shop) : shop;
+    dateKeys.forEach(dateKey => {
+      cashoutPaths.push(`${dbPrefix}/cashout/${shopFormatted}/days/${dateKey}`);
+      incomePaths.push(`${dbPrefix}/income/${shopFormatted}/daily_records/${dateKey}`);
+    });
+  });
+
+  // 🎯 4. ดึงข้อมูลฝั่ง Cashout
+  const cashoutDataMap = {};
+  if (cashoutPaths.length > 0) {
+    try {
+      const batchResponse = callFirestore("POST", ":batchGet", { documents: cashoutPaths });
+      if (Array.isArray(batchResponse)) {
+        batchResponse.forEach(res => {
+          if (res.found) {
+            const fullPath = res.found.name;
+            const fields = fromFirestoreFields(res.found.fields) || {};
+            cashoutDataMap[fullPath] = {
+              parentBillTotal: Number(fields.bill_total || fields.total_amount || 0),
+              status: fields.status || "pending",
+              url: fields.folder_url || fields.url || ""
+            };
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ Error BatchGet Cashout: " + e.message);
+    }
+  }
+
+  // 🎯 5. ดึงข้อมูลฝั่ง Income (ยอดที่พนักงานคีย์)
+  const incomeDataMap = {};
+  if (incomePaths.length > 0) {
+    try {
+      const batchResponse = callFirestore("POST", ":batchGet", { documents: incomePaths });
+      if (Array.isArray(batchResponse)) {
+        batchResponse.forEach(res => {
+          if (res.found) {
+            const fullPath = res.found.name;
+            const f = res.found.fields ? res.found.fields.cash_out : null;
+            const val = f ? (f.doubleValue || f.integerValue || (f.stringValue ? parseFloat(f.stringValue) : 0)) : 0;
+            incomeDataMap[fullPath] = Number(val) || 0;
+          }
+        });
+      }
+    } catch (e) {
+      console.warn("⚠️ Error BatchGet Income: " + e.message);
+    }
+  }
+
+  // 🎯 6. ดึงยอดบิลย่อย Subcollection (เฉพาะวันที่มีการอัปโหลด Cashout)
+  const billTotalMap = {};
+  shopsToFetch.forEach(shop => {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(shop) : shop;
+    dateKeys.forEach(dateKey => {
+      const fullPathId = `${shopFormatted}/days/${dateKey}`;
+      const cPath = `${dbPrefix}/cashout/${fullPathId}`;
+      
+      if (cashoutDataMap[cPath]) {
+        let subBillTotal = 0;
+        try {
+          const billsResp = callFirestore("GET", `cashout/${fullPathId}/bills`);
+          if (billsResp && billsResp.documents && Array.isArray(billsResp.documents)) {
+            billsResp.documents.forEach(doc => {
+              if (doc.fields) {
+                const bFields = fromFirestoreFields(doc.fields) || {};
+                subBillTotal += (Number(bFields.bill_total) || Number(bFields.total_amount) || 0);
+              }
+            });
+          }
+        } catch (e) {
+          // หากไม่มี subcollection บิล
+        }
+        const parentTotal = cashoutDataMap[cPath].parentBillTotal || 0;
+        billTotalMap[fullPathId] = subBillTotal > 0 ? subBillTotal : parentTotal;
+      } else {
+        billTotalMap[fullPathId] = 0;
+      }
+    });
+  });
+
+  // 🎯 7. ประมวลผลและจัดหมวดหมู่การตรวจสอบ (Audit Logic)
+  const auditResults = [];
+  let summary = { match: 0, mismatch: 0, pending: 0, noData: 0 };
+
+  shopsToFetch.forEach(shop => {
+    const shopFormatted = typeof getUnifiedShopName === 'function' ? getUnifiedShopName(shop) : shop;
+    
+    dateKeys.forEach(dateKey => {
+      const fullPathId = `${shopFormatted}/days/${dateKey}`;
+      const cPath = `${dbPrefix}/cashout/${fullPathId}`;
+      const iPath = `${dbPrefix}/income/${shopFormatted}/daily_records/${dateKey}`;
+
+      const billTotal = billTotalMap[fullPathId] || 0;
+      const enteredCashOut = incomeDataMap[iPath] || 0;
+      const diff = Math.abs(billTotal - enteredCashOut);
+
+      let auditStatus = "MATCH";
+      let statusText = "ตรงกัน";
+
+      if (billTotal === 0 && enteredCashOut === 0) {
+        auditStatus = "NO_DATA";
+        statusText = "ไม่มีข้อมูล";
+        summary.noData++;
+      } else if (billTotal > 0 && enteredCashOut === 0) {
+        auditStatus = "PENDING_INPUT";
+        statusText = "ยังไม่คีย์ในระบบ";
+        summary.pending++;
+      } else if (diff > 0.01) {
+        auditStatus = "MISMATCH";
+        statusText = "ยอดไม่ตรงกัน";
+        summary.mismatch++;
+      } else {
+        auditStatus = "MATCH";
+        statusText = "ตรงกัน";
+        summary.match++;
+      }
+
+      // ซ่อนรายการที่ไม่มีข้อมูลทั้งคู่ ถ้าผู้ใช้เปิดตัวเลือก hideNoData
+      if (filterObj.hideNoData && auditStatus === "NO_DATA") {
+        return;
+      }
+
+      // กรองตาม statusFilter ถ้าระบุ
+      if (!filterObj.statusFilter || filterObj.statusFilter === "ALL" || filterObj.statusFilter === auditStatus) {
+        auditResults.push({
+          docId: fullPathId,
+          shop: shopFormatted,
+          dateKey: dateKey,
+          billTotalAmount: billTotal,      // 🟢 ยอดรวมบิลที่สแกน
+          cashOutAmount: enteredCashOut,   // 🔵 ยอดพนักงานคีย์
+          diffAmount: diff,                // 🔴 ผลต่าง
+          auditStatus: auditStatus,        // สถานะระบบ: MATCH, MISMATCH, PENDING_INPUT, NO_DATA
+          statusText: statusText,
+          url: cashoutDataMap[cPath] ? cashoutDataMap[cPath].url : ""
+        });
+      }
+    });
+  });
+
+  return {
+    month: targetMonth,
+    summary: summary,
+    items: auditResults
+  };
+}

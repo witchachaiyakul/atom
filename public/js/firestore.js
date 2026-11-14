@@ -87,7 +87,7 @@ export async function insertAuditLog(actionType, detailsTxt, lineUserObj) {
       details: detailsTxt,
       user_id: lineUserObj ? lineUserObj.id : "System",
       user_name: lineUserObj ? lineUserObj.name : "Unknown",
-      user_picture: lineUserObj ? lineUserObj.picture : ""
+      user_picture: lineUserObj?.picture || ""
     });
     console.log(`✅ Audit Log Saved: [${actionType}] ${detailsTxt}`);
   } catch (error) {
