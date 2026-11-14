@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "atom-group-phi-phi"
+  },
+  "targets": {
+    "atom-group-phi-phi": {
+      "hosting": {
+        "phiphi-site": [
+          "atom-phiphi"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

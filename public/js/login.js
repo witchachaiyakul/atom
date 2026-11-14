@@ -10,9 +10,7 @@ const DEV_DEFAULT_LINE_ID = "Ub1c1cb6c91bee88632afa055e2a98fcd";
 
 const LINE_CONFIG = {
   channelId: "2010270196",
-  redirectUri: window.location.origin + window.location.pathname,
-  // Endpoint Backend / Cloud Function สำหรับแลก code -> profile (ซ่อน Channel Secret)
-  tokenExchangeApi: "https://YOUR_REGION-studio-1060072528-ff5ab.cloudfunctions.net/lineAuthCallback"
+  redirectUri: window.location.origin + window.location.pathname
 };
 
 // กำหนดข้อมูลและหน้าปลายทางของแต่ละระบบ
@@ -119,13 +117,12 @@ async function handleDevLogin() {
     if (!userAccess) {
       showNoAccessScreen({
         id: inputId,
-        name: "Dev Test User (ไม่พบข้อมูลหรือ Inactive)",
+        name: "Dev Test User (ไม่พบข้อมูลในระบบ)",
         picture: "https://cdn-icons-png.flaticon.com/512/149/149071.png"
       });
       return;
     }
 
-    // ตรวจสอบสิทธิ์ตามระบบที่เลือก
     const accessCheck = checkSystemPermission(userAccess, currentTargetSystem);
     if (!accessCheck.allowed) {
       showNoAccessScreen({
@@ -146,11 +143,11 @@ async function handleDevLogin() {
       isDevMode: true
     };
 
-    await insertAuditLog(
-      "LOGIN_DEV",
-      `เข้าสู่${sysCfg.label}ผ่าน Dev Mode สำเร็จ (User: ${lineUserObj.name}, Role: ${userAccess.role})`,
-      lineUserObj
-    );
+    const logDetail = currentTargetSystem === "hr"
+      ? `เข้าสู่ระบบ HR ผ่าน Dev Mode สำเร็จ (User: ${lineUserObj.name})`
+      : `เข้าสู่ระบบหลังบ้านผ่าน Dev Mode สำเร็จ (User: ${lineUserObj.name}, Role: ${userAccess.role})`;
+
+    await insertAuditLog("LOGIN_DEV", logDetail, lineUserObj);
 
     completeLoginAndRedirect(lineUserObj);
 
@@ -162,14 +159,33 @@ async function handleDevLogin() {
 }
 
 // ============================================================================
-// 🟢 2. ฟังก์ชัน LINE Login OAuth2 (Production Mode)
+// 🟢 2. ฟังก์ชัน LINE Login OAuth2 + PKCE (เชื่อมต่อ LINE API โดยตรง)
 // ============================================================================
-function redirectToLineLogin() {
-  // บันทึกระบบที่เลือกไว้ก่อนเด้งไป LINE
+function generateCodeVerifier(length = 64) {
+  const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const randomValues = new Uint8Array(length);
+  crypto.getRandomValues(randomValues);
+  return Array.from(randomValues, (v) => charset[v % charset.length]).join("");
+}
+
+async function generateCodeChallenge(verifier) {
+  const data = new TextEncoder().encode(verifier);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+async function redirectToLineLogin() {
   sessionStorage.setItem("atom_selected_system", currentTargetSystem);
 
   const state = crypto.randomUUID();
+  const codeVerifier = generateCodeVerifier();
+  const codeChallenge = await generateCodeChallenge(codeVerifier);
+
   sessionStorage.setItem("line_oauth_state", state);
+  sessionStorage.setItem("line_code_verifier", codeVerifier);
 
   const authUrl = new URL("https://access.line.me/oauth2/v2.1/authorize");
   authUrl.searchParams.set("response_type", "code");
@@ -177,6 +193,8 @@ function redirectToLineLogin() {
   authUrl.searchParams.set("redirect_uri", LINE_CONFIG.redirectUri);
   authUrl.searchParams.set("state", state);
   authUrl.searchParams.set("scope", "profile openid");
+  authUrl.searchParams.set("code_challenge", codeChallenge);
+  authUrl.searchParams.set("code_challenge_method", "S256");
 
   window.location.href = authUrl.toString();
 }
@@ -188,26 +206,52 @@ async function handleLineCallback(code, returnedState) {
 
   try {
     const savedState = sessionStorage.getItem("line_oauth_state");
+    const codeVerifier = sessionStorage.getItem("line_code_verifier");
+    sessionStorage.removeItem("line_oauth_state");
+    sessionStorage.removeItem("line_code_verifier");
+
     if (savedState && returnedState !== savedState) {
       throw new Error("State ไม่ตรงกัน (อาจเกิดจาก CSRF หรือ Session หมดอายุ)");
     }
 
-    const response = await fetch(LINE_CONFIG.tokenExchangeApi, {
+    if (!codeVerifier) {
+      throw new Error("ไม่พบข้อมูลยืนยัน Session (กรุณากดเข้าสู่ระบบใหม่อีกครั้ง)");
+    }
+
+    // สเต็ป ก: แลก Authorization Code เป็น Access Token กับ LINE API โดยตรง
+    const tokenParams = new URLSearchParams();
+    tokenParams.set("grant_type", "authorization_code");
+    tokenParams.set("code", code);
+    tokenParams.set("redirect_uri", LINE_CONFIG.redirectUri);
+    tokenParams.set("client_id", LINE_CONFIG.channelId);
+    tokenParams.set("code_verifier", codeVerifier);
+
+    const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: code,
-        redirect_uri: LINE_CONFIG.redirectUri
-      })
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: tokenParams.toString()
     });
 
-    if (!response.ok) throw new Error("ไม่สามารถแลก Token จาก LINE ได้");
-    const profileData = await response.json();
+    const tokenData = await tokenRes.json();
+    if (!tokenRes.ok || !tokenData.access_token) {
+      throw new Error(tokenData.error_description || tokenData.error || "ไม่สามารถแลกสิทธิ์ Token จาก LINE ได้");
+    }
 
+    // สเต็ป ข: นำ Token ไปเปิดอ่านข้อมูลโปรไฟล์ (ID, ชื่อ, รูป)
+    const profileRes = await fetch("https://api.line.me/v2/profile", {
+      headers: { Authorization: `Bearer ${tokenData.access_token}` }
+    });
+
+    if (!profileRes.ok) {
+      throw new Error("ไม่สามารถดึงข้อมูลโปรไฟล์ LINE ได้");
+    }
+
+    const profileData = await profileRes.json();
     const lineUserId = profileData.userId;
     const lineDisplayName = profileData.displayName;
     const linePictureUrl = profileData.pictureUrl || "https://cdn-icons-png.flaticon.com/512/149/149071.png";
 
+    // สเต็ป ค: เช็คสิทธิ์แบบ Real-time ผ่านคอลเลกชัน users บน Firestore
     const userAccess = await getUserByLineId(lineUserId);
 
     if (!userAccess) {
@@ -229,6 +273,7 @@ async function handleLineCallback(code, returnedState) {
       return;
     }
 
+    // สเต็ป ง: ผ่านสิทธิ์! สร้างก้อนข้อมูลผู้ใช้และบันทึก Audit Log
     const lineUserObj = {
       id: lineUserId,
       name: lineDisplayName || userAccess.name,
@@ -239,11 +284,11 @@ async function handleLineCallback(code, returnedState) {
       isDevMode: false
     };
 
-    await insertAuditLog(
-      "LOGIN",
-      `พนักงานเข้าสู่${sysCfg.label}สำเร็จผ่าน LINE (Role: ${userAccess.role})`,
-      lineUserObj
-    );
+    const logDetail = currentTargetSystem === "hr"
+      ? `พนักงานเข้าสู่ระบบ HR สำเร็จผ่าน LINE`
+      : `พนักงานเข้าสู่ระบบหลังบ้านสำเร็จผ่าน LINE (Role: ${userAccess.role})`;
+
+    await insertAuditLog("LOGIN", logDetail, lineUserObj);
 
     completeLoginAndRedirect(lineUserObj);
 
@@ -256,24 +301,28 @@ async function handleLineCallback(code, returnedState) {
 }
 
 // ============================================================================
-// 🔐 3. ตรวจสอบสิทธิ์แยกตามระบบ (Back-Office vs HR)
+// 🔐 3. ตรวจสอบสิทธิ์แยกตามระบบ (อิงตามโครงสร้าง Firestore /users/{id} เดิม)
 // ============================================================================
 function checkSystemPermission(userAccess, targetSystem) {
-  const role = (userAccess.role || "").toLowerCase();
-  const allowedOptions = Array.isArray(userAccess.allowedOptions) ? userAccess.allowedOptions : [];
-
-  if (targetSystem === "back-office") {
-    // ระบบหลังบ้าน: ต้องเป็น admin หรือมีสิทธิ์เมนูใน allowedOptions อย่างน้อย 1 รายการ
-    const hasBackofficeAccess = role === "admin" || allowedOptions.length > 0;
-    if (!hasBackofficeAccess) {
+  if (targetSystem === "hr") {
+    // ระบบ HR: เช็กฟิลด์ hr === "active"
+    if (userAccess.hr !== "active") {
       return {
         allowed: false,
-        reason: `บัญชีของคุณไม่มีสิทธิ์เข้าใช้งาน [ระบบหลังบ้าน] (สามารถเข้าใช้งานเฉพาะระบบ HR ได้)`
+        reason: `บัญชีของคุณยังไม่ได้รับอนุมัติสิทธิ์เข้าใช้งาน [ระบบบุคคล / HR] หรือสถานะไม่เป็น Active`
       };
     }
+    return { allowed: true, reason: "" };
   }
 
-  // ระบบ HR: พนักงานที่มีสถานะ active ใน /users/{id} สามารถเข้าใช้งานได้ทุกคน
+  // ระบบหลังบ้าน (back-office): เช็กฟิลด์ status === "active"
+  if (userAccess.status !== "active") {
+    return {
+      allowed: false,
+      reason: `บัญชีของคุณยังไม่ได้รับอนุมัติสิทธิ์เข้าใช้งาน [ระบบหลังบ้าน] หรือสถานะไม่เป็น Active`
+    };
+  }
+
   return { allowed: true, reason: "" };
 }
 

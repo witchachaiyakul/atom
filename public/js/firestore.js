@@ -30,8 +30,8 @@ export const storage = getStorage(app);
 // ============================================================================
 
 /**
- * ตรวจสอบสิทธิ์ผู้ใช้งานจาก LINE User ID ใน collection 'users'
- * โครงสร้าง: /users/{lineUserId} -> { name, role, status: "active", allowedOptions: "..." }
+ * ดึงข้อมูลและสิทธิ์ผู้ใช้งานจาก LINE User ID ใน collection 'users'
+ * โครงสร้าง: /users/{lineUserId} -> { name, role, status: "active", hr: "active", allowedOptions: "..." }
  */
 export async function getUserByLineId(lineUserId) {
   try {
@@ -44,29 +44,23 @@ export async function getUserByLineId(lineUserId) {
     }
 
     const data = userSnap.data();
+    const allowedOptionsRaw = data.allowedOptions || "";
+    let allowedOptions = [];
 
-    // ตรวจสอบสถานะต้องเป็น "active" เท่านั้น
-    if (data.status === "active") {
-      const allowedOptionsRaw = data.allowedOptions || "";
-      let allowedOptions = [];
-
-      if (Array.isArray(allowedOptionsRaw)) {
-        allowedOptions = allowedOptionsRaw;
-      } else if (typeof allowedOptionsRaw === "string" && allowedOptionsRaw.trim() !== "") {
-        allowedOptions = allowedOptionsRaw.split(",").map(item => item.trim());
-      }
-
-      return {
-        id: userSnap.id,
-        name: data.name || "",
-        role: data.role || "staff",
-        status: data.status,
-        allowedOptions: allowedOptions
-      };
+    if (Array.isArray(allowedOptionsRaw)) {
+      allowedOptions = allowedOptionsRaw;
+    } else if (typeof allowedOptionsRaw === "string" && allowedOptionsRaw.trim() !== "") {
+      allowedOptions = allowedOptionsRaw.split(",").map(item => item.trim());
     }
 
-    console.warn(`⚠️ พนักงาน ID: ${lineUserId} สถานะไม่พร้อมใช้งาน (${data.status})`);
-    return null;
+    return {
+      id: userSnap.id,
+      name: data.name || "",
+      role: data.role || "staff",
+      status: data.status || "", // สิทธิ์ระบบหลังบ้าน (Back-Office)
+      hr: data.hr || "",         // สิทธิ์ระบบบุคคล (HR)
+      allowedOptions: allowedOptions
+    };
   } catch (error) {
     console.error("❌ ค้นหาสิทธิ์จาก collection 'users' ล้มเหลว:", error);
     throw error;
