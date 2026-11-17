@@ -32,7 +32,7 @@ const TARGET_STORES = [
 // 🚀 1. เริ่มต้นทำงานและตรวจสอบสิทธิ์
 // ============================================================================
 document.addEventListener("DOMContentLoaded", async () => {
-  if (!verifyPageAccess("IncomeForm")) return;
+  if (!verifyPageAccess("IncomeMenu")) return;
 
   document.getElementById("btnLogout").addEventListener("click", handleLogout);
 
