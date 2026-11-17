@@ -13,6 +13,20 @@
   <!-- Custom HR CSS -->
   <link rel="stylesheet" href="../css/hr.css">
 
+  <style>
+    /* สไตล์ช่องวันที่ที่กดคลิกแก้ไขได้ */
+    .att-day-cell {
+      cursor: pointer;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+      user-select: none;
+    }
+    .att-day-cell:hover {
+      outline: 2px solid #f97316;
+      outline-offset: -2px;
+      background-color: #fff7ed !important;
+    }
+  </style>
+
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </head>
 <body>
@@ -53,9 +67,12 @@
   <!-- พื้นที่หลัก: รายงานสรุปการเข้างานพนักงานรายเดือน -->
   <div class="container-fluid px-4 pb-5" id="monthlyReportSection">
     <div class="d-flex justify-content-between align-items-center mb-4">
-      <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
-        <i class="bi bi-calendar-check me-2"></i>รายงานสรุปการเข้างานพนักงานรายเดือน
-      </h3>
+      <div>
+        <h3 class="fw-bold mb-0" style="color: var(--secondary-orange)">
+          <i class="bi bi-calendar-check me-2"></i>รายงานสรุปการเข้างานพนักงานรายเดือน
+        </h3>
+        <small class="text-muted"><i class="bi bi-hand-index-thumb text-warning"></i> คลิกที่ช่องวันที่ของพนักงานแต่ละคนเพื่อบันทึกหรือแก้ไขสถานะได้ทันที</small>
+      </div>
       <button class="btn btn-outline-dark btn-sm" onclick="location.href='index.html'">
         <i class="bi bi-house-door"></i> กลับหน้าหลัก
       </button>
@@ -94,8 +111,8 @@
       <table class="table table-bordered table-sm align-middle small text-center mb-0" style="min-width: 2300px; font-size: 0.8rem;">
         <thead>
           <tr>
-            <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; width: 60px;" rowspan="2">ID</th>
-            <th style="position: sticky; top: 0; left: 60px; background-color: #212529; color: white; z-index: 15; width: 140px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
+            <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; min-width: 65px; width: 65px;" rowspan="2">ID</th>
+            <th style="position: sticky; top: 0; left: 65px; background-color: #212529; color: white; z-index: 15; min-width: 160px; width: 160px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
             <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 75px;" rowspan="2">ชื่อเล่น</th>
             <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 120px;" class="text-start" rowspan="2">ตำแหน่ง</th>
             <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 110px;" rowspan="2">ร้าน</th>
@@ -120,6 +137,60 @@
           <tr><td colspan="17" class="text-center text-muted py-5">กรุณาเลือกเดือน/ปี ด้านบนเพื่อดึงรายงานสรุป</td></tr>
         </tbody>
       </table>
+    </div>
+  </div>
+
+<!-- Modal บันทึก / แก้ไขสถานะการเข้างานรายวัน -->
+  <div class="modal fade" id="editAttendanceCellModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-dark text-white">
+          <h5 class="modal-title fs-6 fw-bold">
+            <i class="bi bi-pencil-square text-warning me-2"></i>เลือกสถานะรายวัน
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editCellEmpId">
+          <input type="hidden" id="editCellDate">
+
+          <div class="p-2 mb-3 rounded bg-light border small">
+            <div class="mb-1">
+              <span class="text-muted">พนักงาน:</span>
+              <strong id="editCellEmpLabel" class="text-dark">-</strong>
+            </div>
+            <div>
+              <span class="text-muted">วันที่:</span>
+              <strong id="editCellDateLabel" class="text-primary">-</strong>
+            </div>
+          </div>
+
+          <div class="mb-1">
+            <label for="editCellStatus" class="form-label fw-bold small">สถานะการทำงาน</label>
+            <select id="editCellStatus" class="form-select fw-bold">
+              <option value="">-(-)-</option>
+              <option value="Full">Full</option>
+              <option value="Half">Half</option>
+              <option value="Sick">Sick(ป่วย)</option>
+              <option value="Off">Off(วันหยุด)</option>
+              <option value="Absent">Absent(ขาดงาน)</option>
+              <option value="Late">Late</option>
+              <option value="Late/Half">Late/Half</option>
+              <option value="Leave">Leave(ลากิจ)</option>
+              <option value="Extra Day">Extra Day</option>
+              <option value="Full/PH">Full/PH</option>
+              <option value="Half/PH">Half/PH</option>
+              <option value="Without Pay">Without Pay</option>
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">ยกเลิก</button>
+          <button type="button" id="btnSaveCellAttendance" class="btn btn-hr btn-sm fw-bold px-3" onclick="saveAttendanceCellEdit()">
+            <i class="bi bi-save me-1"></i> บันทึก
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 

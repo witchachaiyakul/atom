@@ -1,13 +1,22 @@
 // public/hr/js/monthly-report.js
 import { db } from "../../js/firestore.js";
-import { initHRPageSession } from "./hr-log.js";
+import { initHRPageSession, insertAuditLog } from "./hr-log.js";
 import {
   collection,
   collectionGroup,
+  doc,
   getDocs,
   query,
+  serverTimestamp,
+  setDoc,
   where
 } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+// ตัวแปรเก็บข้อมูลชุดปัจจุบันในหน้าจอ เพื่ออัปเดตตารางและยอดรวมทันทีหลังบันทึก
+let currentYearMonth = "";
+let currentStaffList = [];
+let currentLogsMap = {};
+let editCellModalInstance = null;
 
 // =========================================================================
 // 🚀 1. เริ่มต้นทำงาน ตั้งค่าเดือนเริ่มต้น (รอบปัจจุบัน) และโหลดรายงานทันที
@@ -15,6 +24,11 @@ import {
 document.addEventListener("DOMContentLoaded", async () => {
   const user = initHRPageSession();
   if (!user) return;
+
+  const modalEl = document.getElementById("editAttendanceCellModal");
+  if (modalEl && window.bootstrap) {
+    editCellModalInstance = new bootstrap.Modal(modalEl);
+  }
 
   const monthInput = document.getElementById("reportMonthSelect");
   if (monthInput && !monthInput.value) {
@@ -50,8 +64,12 @@ async function loadMonthlyReportData() {
       console.warn("Warning:", res.error);
     }
 
-    populateShopFilterDropdown(res.staff);
-    buildMonthlyTableMatrix(targetMonth, res.staff, res.logs);
+    currentYearMonth = targetMonth;
+    currentStaffList = res.staff;
+    currentLogsMap = res.logs;
+
+    populateShopFilterDropdown(currentStaffList);
+    buildMonthlyTableMatrix(currentYearMonth, currentStaffList, currentLogsMap);
     filterMonthlyReportRows();
   } catch (err) {
     console.error("Error loadMonthlyReportData:", err);
@@ -73,7 +91,7 @@ async function getMonthlyAttendanceReport(yearMonth) {
   const prevYear = month === 1 ? year - 1 : year;
 
   const startDate = `${prevYear}-${String(prevMonth).padStart(2, "0")}-26`;
-  const nextMonthDate = `${year}-${String(month).padStart(2, "0")}-26`; // น้อยกว่าวันที่ 26 = สิ้นสุดวันที่ 25
+  const nextMonthDate = `${year}-${String(month).padStart(2, "0")}-26`;
 
   // 1. ดึงข้อมูลรายชื่อพนักงานที่ยังทำงานอยู่ทั้งหมดจาก /hr
   const empSnap = await getDocs(collection(db, "hr"));
@@ -134,12 +152,12 @@ async function getMonthlyAttendanceReport(yearMonth) {
         if (!attendanceLogsMap[empId]) attendanceLogsMap[empId] = {};
         attendanceLogsMap[empId][logDate] = {
           status: logData.status || "",
-          ot_hours: Number(logData.ot_hours) || 0
+          ot_hours: Number(logData.ot_hours) || 0,
+          remarks: logData.remarks || ""
         };
       }
     });
   } catch (cgErr) {
-    // Fallback: กรณี Firestore ยังไม่ได้สร้าง Composite Index ให้ดึง subcollection ของแต่ละคนแบบขนาน
     console.warn("Fallback to per-employee attendance_logs fetch:", cgErr.message);
 
     await Promise.all(
@@ -159,7 +177,8 @@ async function getMonthlyAttendanceReport(yearMonth) {
               if (!attendanceLogsMap[emp.employee_id]) attendanceLogsMap[emp.employee_id] = {};
               attendanceLogsMap[emp.employee_id][logDate] = {
                 status: logData.status || "",
-                ot_hours: Number(logData.ot_hours) || 0
+                ot_hours: Number(logData.ot_hours) || 0,
+                remarks: logData.remarks || ""
               };
             }
           });
@@ -214,8 +233,8 @@ function buildMonthlyTableMatrix(yearMonth, staffList, logsMap) {
 
     thead.innerHTML = `
       <tr>
-        <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; width: 60px;" rowspan="2">ID</th>
-        <th style="position: sticky; top: 0; left: 60px; background-color: #212529; color: white; z-index: 15; width: 140px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
+        <th style="position: sticky; top: 0; left: 0; background-color: #212529; color: white; z-index: 15; min-width: 65px; width: 65px;" rowspan="2">ID</th>
+        <th style="position: sticky; top: 0; left: 65px; background-color: #212529; color: white; z-index: 15; min-width: 160px; width: 160px;" class="text-start" rowspan="2">ชื่อพนักงาน</th>
         <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 75px;" rowspan="2">ชื่อเล่น</th>
         <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 120px;" class="text-start" rowspan="2">ตำแหน่ง</th>
         <th style="position: sticky; top: 0; background-color: #212529; color: white; z-index: 10; width: 110px;" rowspan="2">ร้าน</th>
@@ -272,10 +291,16 @@ function buildMonthlyTableMatrix(yearMonth, staffList, logsMap) {
 
       let symbol = "-";
       let cellStyle = "";
+      let tooltipText = `${emp.name} (${dateStr}) - คลิกเพื่อแก้ไข`;
 
       if (empLog) {
         const status = empLog.status || "";
-        counts.OT += Number(empLog.ot_hours) || 0;
+        const otHrs = Number(empLog.ot_hours) || 0;
+        counts.OT += otHrs;
+
+        if (status) {
+          tooltipText = `${emp.name} (${dateStr}): ${status}${otHrs > 0 ? ` | OT ${otHrs} ชม.` : ""}${empLog.remarks ? ` (${empLog.remarks})` : ""}`;
+        }
 
         if (status.startsWith("Late")) {
           counts.Late++;
@@ -327,13 +352,20 @@ function buildMonthlyTableMatrix(yearMonth, staffList, logsMap) {
         }
       }
 
-      daysDataHtml += `<td style="font-size: 0.75rem; ${cellStyle}">${symbol}</td>`;
+      daysDataHtml += `
+        <td class="att-day-cell"
+            title="${escapeHtml(tooltipText)}"
+            onclick="openEditAttendanceCellModal('${escapeHtml(empId)}', '${escapeHtml(dateStr)}')"
+            style="font-size: 0.75rem; ${cellStyle}">
+          ${symbol}
+        </td>
+      `;
     });
 
     bodyHtml += `
       <tr class="monthly-report-row" data-shop="${escapeHtml(emp.shop)}">
-        <td style="position: sticky; left: 0; background: #f8f9fa; z-index: 2; font-weight: bold;" class="text-secondary border-end">${escapeHtml(empId)}</td>
-        <td style="position: sticky; left: 60px; background: #f8f9fa; z-index: 2; font-weight: bold;" class="text-start border-end text-truncate">${escapeHtml(emp.name)}</td>
+        <td style="position: sticky; left: 0; background: #f8f9fa; z-index: 2; font-weight: bold; min-width: 65px; width: 65px;" class="text-secondary border-end">${escapeHtml(empId)}</td>
+        <td style="position: sticky; left: 65px; background: #f8f9fa; z-index: 2; font-weight: bold; min-width: 160px; width: 160px;" class="text-start border-end text-truncate">${escapeHtml(emp.name)}</td>
         <td class="text-muted text-truncate">${escapeHtml(emp.nick)}</td>
         <td class="text-start text-muted text-truncate">${escapeHtml(emp.position)}</td>
         <td class="text-secondary fw-bold text-truncate" style="background: #fff9e6;">${escapeHtml(emp.shop)}</td>
@@ -360,7 +392,108 @@ function buildMonthlyTableMatrix(yearMonth, staffList, logsMap) {
 }
 
 // =========================================================================
-// 🛠️ Helper Functions (ตัวกรองสาขา & UI)
+// ✏️ 4. เปิด Modal และบันทึก/แก้ไขข้อมูลสถานะรายวันลง Firestore
+// =========================================================================
+function openEditAttendanceCellModal(empId, dateStr) {
+  const emp = currentStaffList.find(s => s.employee_id === empId);
+  if (!emp) return;
+
+  const existingLog = currentLogsMap[empId]?.[dateStr] || {
+    status: "",
+    ot_hours: 0
+  };
+
+  // แปลง Day Off ให้ตรงกับตัวเลือก Off ใน dropdown
+  const normalizedStatus = existingLog.status === "Day Off" ? "Off" : (existingLog.status || "");
+
+  document.getElementById("editCellEmpId").value = empId;
+  document.getElementById("editCellDate").value = dateStr;
+  document.getElementById("editCellEmpLabel").textContent = `[${empId}] ${emp.name} (${emp.nick})`;
+  document.getElementById("editCellDateLabel").textContent = formatThaiShortDate(dateStr);
+  document.getElementById("editCellStatus").value = normalizedStatus;
+
+  if (editCellModalInstance) {
+    editCellModalInstance.show();
+  }
+}
+
+async function saveAttendanceCellEdit() {
+  const empId = document.getElementById("editCellEmpId").value;
+  const dateStr = document.getElementById("editCellDate").value;
+  const newStatus = document.getElementById("editCellStatus").value;
+
+  if (!empId || !dateStr) return;
+
+  const btnSave = document.getElementById("btnSaveCellAttendance");
+  const originalBtnHtml = btnSave.innerHTML;
+  btnSave.disabled = true;
+  btnSave.innerHTML = `<span class="spinner-border spinner-border-sm me-1"></span> กำลังบันทึก...`;
+
+  try {
+    const safeUser = window.currentUser || { id: "System", name: "HR Admin" };
+    const logDocRef = doc(db, "hr", empId, "attendance_logs", dateStr);
+
+    // อัปเดตเฉพาะ status โดยรักษาค่า ot_hours และเวลาสแกนเดิมไว้
+    await setDoc(
+      logDocRef,
+      {
+        date: dateStr,
+        status: newStatus,
+        updated_at: serverTimestamp(),
+        updated_by: safeUser.name || safeUser.id || "HR"
+      },
+      { merge: true }
+    );
+
+    const emp = currentStaffList.find(s => s.employee_id === empId);
+    const empName = emp ? emp.name : empId;
+
+    await insertAuditLog(
+      "UPDATE_MONTHLY_ATTENDANCE",
+      `แก้ไขสถานะการเข้างานรายเดือนของ ${empName} (ID: ${empId}) วันที่ ${dateStr} -> สถานะ: "${newStatus || "ว่าง"}"`,
+      safeUser
+    );
+
+    // อัปเดตข้อมูลในหน่วยความจำและวาดตารางใหม่ทันที
+    if (!currentLogsMap[empId]) currentLogsMap[empId] = {};
+    const existingOt = currentLogsMap[empId][dateStr]?.ot_hours || 0;
+
+    if (!newStatus && existingOt === 0) {
+      delete currentLogsMap[empId][dateStr];
+    } else {
+      currentLogsMap[empId][dateStr] = {
+        ...currentLogsMap[empId][dateStr],
+        status: newStatus,
+        ot_hours: existingOt
+      };
+    }
+
+    const tableContainer = document.querySelector("#monthlyReportSection .table-responsive");
+    const prevScrollTop = tableContainer ? tableContainer.scrollTop : 0;
+    const prevScrollLeft = tableContainer ? tableContainer.scrollLeft : 0;
+
+    buildMonthlyTableMatrix(currentYearMonth, currentStaffList, currentLogsMap);
+    filterMonthlyReportRows();
+
+    if (tableContainer) {
+      tableContainer.scrollTop = prevScrollTop;
+      tableContainer.scrollLeft = prevScrollLeft;
+    }
+
+    if (editCellModalInstance) {
+      editCellModalInstance.hide();
+    }
+  } catch (err) {
+    console.error("Error saving attendance cell:", err);
+    alert("บันทึกข้อมูลไม่สำเร็จ: " + err.message);
+  } finally {
+    btnSave.disabled = false;
+    btnSave.innerHTML = originalBtnHtml;
+  }
+}
+
+// =========================================================================
+// 🛠️ 5. Helper Functions (ตัวกรองสาขา & UI)
 // =========================================================================
 function populateShopFilterDropdown(staffList) {
   const selectEl = document.getElementById("reportShopFilter");
@@ -390,6 +523,12 @@ function filterMonthlyReportRows() {
   });
 }
 
+function formatThaiShortDate(dateStr) {
+  const [y, m, d] = String(dateStr).split("-");
+  if (!y || !m || !d) return dateStr;
+  return `${d}/${m}/${Number(y) + 543}`;
+}
+
 function toggleLoader(show) {
   const loader = document.getElementById("loader");
   if (loader) loader.style.display = show ? "flex" : "none";
@@ -406,3 +545,5 @@ function escapeHtml(str) {
 // ผูกฟังก์ชันเข้า window สำหรับเรียกใช้จาก HTML
 window.loadMonthlyReportData = loadMonthlyReportData;
 window.filterMonthlyReportRows = filterMonthlyReportRows;
+window.openEditAttendanceCellModal = openEditAttendanceCellModal;
+window.saveAttendanceCellEdit = saveAttendanceCellEdit;
