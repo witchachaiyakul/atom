@@ -1,5 +1,5 @@
 // public/js/claim.js
-import { db, insertAuditLog } from "../..js/firestore.js";
+import { db, insertAuditLog } from "../../js/firestore.js";
 import { 
   collection, 
   doc, 
@@ -24,15 +24,20 @@ let isSavingClaim = false;
 document.addEventListener("DOMContentLoaded", async () => {
   if (!verifyPageAccess("ExpenseForm2")) return;
 
-  document.getElementById("btnLogout").addEventListener("click", handleLogout);
+  // ใส่ ?. ป้องกัน Error กรณีหน้า claim.html ใช้ปุ่มกลับหน้าหลักแทนปุ่มออกจากระบบ
+  document.getElementById("btnLogout")?.addEventListener("click", handleLogout);
 
-  await Promise.all([
-    loadShopDatalist(),
-    loadUnclaimedExpenses()
-  ]);
+  try {
+    await Promise.all([
+      loadShopDatalist(),
+      loadUnclaimedExpenses()
+    ]);
+  } catch (err) {
+    console.error("โหลดข้อมูลหน้าตั้งเบิกล้มเหลว:", err);
+  }
 });
 
-function verifyPageAccess(requiredOption) {
+function verifyPageAccess(requiredOption = "ExpenseForm2") {
   const rawUser = sessionStorage.getItem("atom_line_user");
   if (!rawUser) {
     window.location.href = "../login.html";
@@ -42,28 +47,44 @@ function verifyPageAccess(requiredOption) {
   try {
     const user = JSON.parse(rawUser);
     const role = (user.role || "").toLowerCase();
-    const allowedList = (user.allowedOptions || []).map(opt => opt.toLowerCase());
+
+    // รองรับทั้ง Array และ String ป้องกัน Error จาก .map()
+    const rawOptions = Array.isArray(user.allowedOptions)
+      ? user.allowedOptions
+      : String(user.allowedOptions || "").split(",").map(s => s.trim()).filter(Boolean);
+
+    const allowedList = rawOptions.map(opt => opt.toLowerCase());
+    const targetOpt = String(requiredOption || "").toLowerCase();
 
     const hasAccess = role === "admin" || 
                       allowedList.includes("all") || 
-                      allowedList.includes(requiredOption.toLowerCase());
+                      allowedList.includes(targetOpt);
 
     if (!hasAccess) {
-      alert("❌ คุณไม่มีสิทธิ์เข้าใช้งานหน้าตั้งเบิกค่าใช้จ่าย");
+      alert(`❌ คุณไม่มีสิทธิ์เข้าใช้งานหน้าตั้งเบิกค่าใช้จ่าย (ต้องการสิทธิ์: ${requiredOption})`);
       window.location.href = "index.html";
       return false;
     }
 
     window.currentUser = user;
-    document.getElementById("headerUserName").textContent = user.name || "ผู้ใช้งาน";
-    document.getElementById("headerUserRole").textContent = user.role || "staff";
-    if (user.picture) document.getElementById("headerUserImg").src = user.picture;
 
+    // ตรวจสอบว่ามี Element ในหน้า claim.html จริงก่อนกำหนดค่า
+    const nameEl = document.getElementById("headerUserName");
+    const roleEl = document.getElementById("headerUserRole");
+    const imgEl = document.getElementById("headerUserImg");
     const profileBox = document.getElementById("userHeaderProfile");
-    profileBox.classList.remove("d-none");
-    profileBox.classList.add("d-flex");
+
+    if (nameEl) nameEl.textContent = user.name || "ผู้ใช้งาน";
+    if (roleEl) roleEl.textContent = user.role || "staff";
+    if (imgEl && user.picture) imgEl.src = user.picture;
+    if (profileBox) {
+      profileBox.classList.remove("d-none");
+      profileBox.classList.add("d-flex");
+    }
+
     return true;
   } catch (err) {
+    console.error("verifyPageAccess Error:", err);
     window.location.href = "../login.html";
     return false;
   }
