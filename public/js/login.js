@@ -41,10 +41,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   document.getElementById("btnLineLogin").addEventListener("click", redirectToLineLogin);
-  document.getElementById("btnDevLogin").addEventListener("click", handleDevLogin);
-  document.getElementById("devLineIdInput").addEventListener("keypress", (e) => {
-    if (e.key === "Enter") handleDevLogin();
-  });
+document.getElementById("btnDevLogin")?.addEventListener("click", handleDevLogin);
+document.getElementById("devLineIdInput")?.addEventListener("keypress", (e) => {
+  if (e.key === "Enter") handleDevLogin();
+});
 
   // 1. ตรวจสอบว่ามีการ Redirect กลับมาจาก LINE (?code=...) หรือไม่
   const urlParams = new URLSearchParams(window.location.search);
@@ -274,15 +274,16 @@ async function handleLineCallback(code, returnedState) {
     }
 
     // สเต็ป ง: ผ่านสิทธิ์! สร้างก้อนข้อมูลผู้ใช้และบันทึก Audit Log
-    const lineUserObj = {
-      id: lineUserId,
-      name: lineDisplayName || userAccess.name,
-      picture: linePictureUrl,
-      role: userAccess.role,
-      allowedOptions: userAccess.allowedOptions || [],
-      targetSystem: currentTargetSystem,
-      isDevMode: false
-    };
+const lineUserObj = {
+  id: lineUserId,
+  name: lineDisplayName || userAccess.name,
+  picture: linePictureUrl,
+  role: userAccess.role,
+  hr: userAccess.hr || "", // เพิ่มบรรทัดนี้
+  allowedOptions: userAccess.allowedOptions || [],
+  targetSystem: currentTargetSystem,
+  isDevMode: false
+};
 
     const logDetail = currentTargetSystem === "hr"
       ? `พนักงานเข้าสู่ระบบ HR สำเร็จผ่าน LINE`
