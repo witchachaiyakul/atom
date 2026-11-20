@@ -4,7 +4,7 @@ import { getUserByLineId, insertAuditLog } from "./firestore.js";
 // ============================================================================
 // 🎯 [ตั้งค่าระบบ & สวิตช์โหมดทดสอบ]
 // ============================================================================
-const IS_DEV_MODE = true; // true = เปิดช่องกรอก LINE User ID ทดสอบ | false = บังคับ LINE Login จริง
+const IS_DEV_MODE = false; // true = เปิดช่องกรอก LINE User ID ทดสอบ | false = บังคับ LINE Login จริง
 
 const DEV_DEFAULT_LINE_ID = "Ub1c1cb6c91bee88632afa055e2a98fcd";
 
