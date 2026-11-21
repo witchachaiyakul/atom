@@ -412,12 +412,11 @@ async function submitAllData() {
   const invoiceItems = document.querySelectorAll('.invoice-item');
   if (invoiceItems.length === 0) return;
 
-  // ตรวจสอบข้อมูลเบื้องต้นก่อนเริ่มอัปโหลด
   for (let i = 0; i < invoiceItems.length; i++) {
     const netVal = parseFloat(invoiceItems[i].querySelector('.net-amount').value) || 0;
     const shopVal = invoiceItems[i].querySelector('.shop-name').value.trim();
     const supVal = invoiceItems[i].querySelector('.supplier-name').value.trim();
-    if (!shopVal || !supVal || netVal <= 0) {
+    if (!shopVal || !supVal || netVal === 0) {
       alert(`กรุณากรอกข้อมูล "ร้าน (สาขา)", "Supplier" และ "ยอดสุทธิ" ในรายการที่ ${i + 1} ให้ครบถ้วนครับ`);
       return;
     }
